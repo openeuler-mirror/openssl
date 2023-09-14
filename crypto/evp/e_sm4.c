@@ -15,17 +15,11 @@
 # include <openssl/modes.h>
 # include "crypto/sm4.h"
 # include "crypto/evp.h"
+# include "crypto/sm4_platform.h"
 # include "evp_local.h"
 # include "modes_local.h"
 
-#if defined(OPENSSL_CPUID_OBJ) && (defined(__arm__) || defined(__arm) || defined(__aarch64__))
-# include "arm_arch.h"
-# if __ARM_MAX_ARCH__>=7
-#  if defined(VPSM4_EX_ASM)
-#   define VPSM4_EX_CAPABLE (OPENSSL_armcap_P & ARMV8_AES)
-#  endif
-# endif
-#endif
+
 
 typedef struct {
     union {
@@ -35,27 +29,10 @@ typedef struct {
     block128_f block;
     union {
         ecb128_f ecb;
+        cbc128_f cbc;
+        ctr128_f ctr;
     } stream;
 } EVP_SM4_KEY;
-
-#ifdef VPSM4_EX_CAPABLE
-void vpsm4_ex_set_encrypt_key(const unsigned char *userKey, SM4_KEY *key);
-void vpsm4_ex_set_decrypt_key(const unsigned char *userKey, SM4_KEY *key);
-#define vpsm4_ex_encrypt SM4_encrypt
-#define vpsm4_ex_decrypt SM4_encrypt
-void vpsm4_ex_ecb_encrypt(
-    const unsigned char *in, unsigned char *out, size_t length, const SM4_KEY *key, const int enc);
-/* xts mode in GB/T 17964-2021 */
-void vpsm4_ex_xts_encrypt_gb(const unsigned char *in, unsigned char *out, size_t length, const SM4_KEY *key1,
-    const SM4_KEY *key2, const uint8_t iv[16]);
-void vpsm4_ex_xts_decrypt_gb(const unsigned char *in, unsigned char *out, size_t length, const SM4_KEY *key1,
-    const SM4_KEY *key2, const uint8_t iv[16]);
-/* xts mode in IEEE Std 1619-2007 */
-void vpsm4_ex_xts_encrypt(const unsigned char *in, unsigned char *out, size_t length, const SM4_KEY *key1,
-    const SM4_KEY *key2, const uint8_t iv[16]);
-void vpsm4_ex_xts_decrypt(const unsigned char *in, unsigned char *out, size_t length, const SM4_KEY *key1,
-    const SM4_KEY *key2, const uint8_t iv[16]);
-#endif
 
 # define BLOCK_CIPHER_generic(nid,blocksize,ivlen,nmode,mode,MODE,flags) \
 static const EVP_CIPHER sm4_##mode = { \
@@ -84,6 +61,21 @@ static int sm4_init_key(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 
     mode = EVP_CIPHER_CTX_mode(ctx);
     if ((mode == EVP_CIPH_ECB_MODE || mode == EVP_CIPH_CBC_MODE) && !enc) {
+#ifdef HWSM4_CAPABLE
+        if (HWSM4_CAPABLE) {
+            HWSM4_set_decrypt_key(key, &dat->ks.ks);
+            dat->block = (block128_f) HWSM4_decrypt;
+            dat->stream.cbc = NULL;
+# ifdef HWSM4_cbc_encrypt
+            if (mode == EVP_CIPH_CBC_MODE)
+                dat->stream.cbc = (cbc128_f) HWSM4_cbc_encrypt;
+# endif
+# ifdef HWSM4_ecb_encrypt
+            if (mode == EVP_CIPH_ECB_MODE)
+                dat->stream.ecb = (ecb128_f) HWSM4_ecb_encrypt;
+# endif
+        } else
+#endif
 #ifdef VPSM4_EX_CAPABLE
         if (VPSM4_EX_CAPABLE) {
             vpsm4_ex_set_decrypt_key(key, &dat->ks.ks);
@@ -97,6 +89,29 @@ static int sm4_init_key(EVP_CIPHER_CTX *ctx, const unsigned char *key,
             SM4_set_key(key, EVP_CIPHER_CTX_get_cipher_data(ctx));
         }
     } else {
+#ifdef HWSM4_CAPABLE
+        if (HWSM4_CAPABLE) {
+            HWSM4_set_encrypt_key(key, &dat->ks.ks);
+            dat->block = (block128_f) HWSM4_encrypt;
+            dat->stream.cbc = NULL;
+# ifdef HWSM4_cbc_encrypt
+            if (mode == EVP_CIPH_CBC_MODE)
+                dat->stream.cbc = (cbc128_f) HWSM4_cbc_encrypt;
+            else
+# endif
+# ifdef HWSM4_ecb_encrypt
+            if (mode == EVP_CIPH_ECB_MODE)
+                dat->stream.ecb = (ecb128_f) HWSM4_ecb_encrypt;
+            else
+# endif
+# ifdef HWSM4_ctr32_encrypt_blocks
+            if (mode == EVP_CIPH_CTR_MODE)
+                dat->stream.ctr = (ctr128_f) HWSM4_ctr32_encrypt_blocks;
+            else
+# endif
+                (void)0;            /* terminate potentially open 'else' */
+        } else
+#endif
 #ifdef VPSM4_EX_CAPABLE
         if (VPSM4_EX_CAPABLE) {
             vpsm4_ex_set_encrypt_key(key, &dat->ks.ks);
@@ -118,7 +133,10 @@ static int sm4_cbc_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 {
     EVP_SM4_KEY *dat = EVP_C_DATA(EVP_SM4_KEY,ctx);
 
-    if (EVP_CIPHER_CTX_encrypting(ctx))
+    if (dat->stream.cbc)
+        (*dat->stream.cbc) (in, out, len, &dat->ks.ks, ctx->iv,
+                            EVP_CIPHER_CTX_encrypting(ctx));
+    else if (EVP_CIPHER_CTX_encrypting(ctx))
         CRYPTO_cbc128_encrypt(in, out, len, &dat->ks.ks,
                               EVP_CIPHER_CTX_iv_noconst(ctx), dat->block);
     else
@@ -183,10 +201,16 @@ static int sm4_ctr_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
         return 0;
     num = (unsigned int)n;
 
-    CRYPTO_ctr128_encrypt(in, out, len, &dat->ks.ks,
-                            ctx->iv,
-                            EVP_CIPHER_CTX_buf_noconst(ctx), &num,
-                            dat->block);
+    if (dat->stream.ctr)
+        CRYPTO_ctr128_encrypt_ctr32(in, out, len, &dat->ks,
+                                    ctx->iv,
+                                    EVP_CIPHER_CTX_buf_noconst(ctx),
+                                    &num, dat->stream.ctr);
+    else
+        CRYPTO_ctr128_encrypt(in, out, len, &dat->ks.ks,
+                                ctx->iv,
+                                EVP_CIPHER_CTX_buf_noconst(ctx), &num,
+                                dat->block);
     EVP_CIPHER_CTX_set_num(ctx, num);
     return 1;
 }

@@ -1418,7 +1418,8 @@ unless ($disabled{asm}) {
         push @{$config{lib_defines}}, "POLY1305_ASM";
     }
     if ($target{sm4_asm_src} ne "") {
-        push @{$config{lib_defines}}, "VPSM4_EX_ASM";
+        push @{$config{lib_defines}}, "SM4_ASM" if ($target{sm4_asm_src} =~ m/sm4/);
+        push @{$config{lib_defines}}, "VPSM4_EX_ASM" if ($target{sm4_asm_src} =~ m/vpsm4_ex/);
     }
     if ($target{sm3_asm_src} ne "") {
         push @{$config{lib_defines}}, "SM3_ASM";
