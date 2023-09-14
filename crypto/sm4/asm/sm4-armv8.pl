@@ -244,6 +244,8 @@ $code.=<<___;
 	.long 0x10171E25, 0x2C333A41, 0x484F565D, 0x646B7279
 .Lfk:
 	.long 0xa3b1bac6, 0x56aa3350, 0x677d9197, 0xb27022dc
+.Lxts_magic:
+	.dword 0x0101010101010187,0x0101010101010101
 ___
 }}}
 
@@ -604,7 +606,7 @@ $code.=<<___;
 .globl	${prefix}_ctr32_encrypt_blocks
 .type	${prefix}_ctr32_encrypt_blocks,%function
 .align	5
-${prefix}_ctr32_encrypt_blocks:	
+${prefix}_ctr32_encrypt_blocks:
 	stp	d8,d9,[sp, #-16]!
 
 	ld1	{$ivec.4s},[$ivp]
@@ -736,7 +738,7 @@ $code.=<<___;
 .align    5
 ${prefix}_xts_do_cipher${standard}:
 	mov w$magic,0x87
-    ldr $qMagic, =0x01010101010101010101010101010187
+    ldr $qMagic, .Lxts_magic
 	// used to encrypt the XORed plaintext blocks
 	ld1	{@rks[0].4s,@rks[1].4s,@rks[2].4s,@rks[3].4s},[$rk2],#64
 	ld1	{@rks[4].4s,@rks[5].4s,@rks[6].4s,@rks[7].4s},[$rk2]
@@ -963,7 +965,7 @@ $code.=<<___;
     cmp $remain,0
     b.eq 99f
 
-// This brance calculates the last two tweaks, 
+// This brance calculates the last two tweaks,
 // while the encryption/decryption length is larger than 32
 .last_2blks_tweak${standard}:
 ___
@@ -974,7 +976,7 @@ $code.=<<___;
     b .check_dec${standard}
 
 
-// This brance calculates the last two tweaks, 
+// This brance calculates the last two tweaks,
 // while the encryption/decryption length is less than 32, who only need two tweaks
 .only_2blks_tweak${standard}:
     mov @tweak[1].16b,@tweak[0].16b
@@ -1018,7 +1020,7 @@ $code.=<<___;
         strb    w$tmp1,[$lastBlk,$remain]
         strb    w$tmp0,[$out,$remain]
     b.gt .loop${standard}
-    ld1        {@dat[0].4s}, [$lastBlk]    
+    ld1        {@dat[0].4s}, [$lastBlk]
     eor @dat[0].16b, @dat[0].16b, @tweak[2].16b
 ___
 	&rev32(@dat[0],@dat[0]);

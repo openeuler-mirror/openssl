@@ -108,12 +108,12 @@ ___
 
 sub load_sbox_matrix () {
 $code.=<<___;
-    ldr $MaskQ,       =0x0306090c0f0205080b0e0104070a0d00
-    ldr $TAHMatQ,    =0x22581a6002783a4062185a2042387a00
-    ldr $TALMatQ,    =0xc10bb67c4a803df715df62a89e54e923
-    ldr $ATAHMatQ,   =0x1407c6d56c7fbeadb9aa6b78c1d21300
-    ldr $ATALMatQ,   =0xe383c1a1fe9edcbc6404462679195b3b
-    ldr $ANDMaskQ,    =0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f
+	ldr $MaskQ, .Lsbox_magic
+	ldr $TAHMatQ, .Lsbox_magic+16
+	ldr $TALMatQ, .Lsbox_magic+32
+	ldr $ATAHMatQ, .Lsbox_magic+48
+	ldr $ATALMatQ, .Lsbox_magic+64
+	ldr $ANDMaskQ, .Lsbox_magic+80
 ___
 }
 # matrix multiplication Mat*x = (lowerMat*x) ^ (higherMat*x)
@@ -505,7 +505,7 @@ sub compute_tweak_vec() {
     my $des = shift;
     &rbit(@vtmp[2],$src);
 $code.=<<___;
-    ldr  @qtmp[0], =0x01010101010101010101010101010187
+    ldr  @qtmp[0], .Lxts_magic
     shl  $des.16b, @vtmp[2].16b, #1
     ext  @vtmp[1].16b, @vtmp[2].16b, @vtmp[2].16b,#15
     ushr @vtmp[1].16b, @vtmp[1].16b, #7
@@ -569,10 +569,18 @@ ${prefix}_consts:
 	.long 0xA0A7AEB5, 0xBCC3CAD1, 0xD8DFE6ED, 0xF4FB0209
 	.long 0x10171E25, 0x2C333A41, 0x484F565D, 0x646B7279
 .Lfk:
-    .long 0xa3b1bac6, 0x56aa3350, 0x677d9197, 0xb27022dc
+	.long 0xa3b1bac6, 0x56aa3350, 0x677d9197, 0xb27022dc
 .Lshuffles:
-    .long 0x07060504, 0x0B0A0908, 0x0F0E0D0C, 0x03020100
- 
+	.long 0x07060504, 0x0B0A0908, 0x0F0E0D0C, 0x03020100
+.Lxts_magic:
+	.dword 0x0101010101010187,0x0101010101010101
+.Lsbox_magic:
+	.dword 0x0b0e0104070a0d00,0x0306090c0f020508
+	.dword 0x62185a2042387a00,0x22581a6002783a40
+	.dword 0x15df62a89e54e923,0xc10bb67c4a803df7
+	.dword 0xb9aa6b78c1d21300,0x1407c6d56c7fbead
+	.dword 0x6404462679195b3b,0xe383c1a1fe9edcbc
+	.dword 0x0f0f0f0f0f0f0f0f,0x0f0f0f0f0f0f0f0f
 .size	${prefix}_consts,.-${prefix}_consts
 ___
 
@@ -1033,7 +1041,7 @@ $code.=<<___;
     cmp $remain,0
     b.eq .return${standard}
 
-// This brance calculates the last two tweaks, 
+// This brance calculates the last two tweaks,
 // while the encryption/decryption length is larger than 32
 .last_2blks_tweak${standard}:
 ___
@@ -1044,7 +1052,7 @@ $code.=<<___;
     b .check_dec${standard}
 
 
-// This brance calculates the last two tweaks, 
+// This brance calculates the last two tweaks,
 // while the encryption/decryption length is equal to 32, who only need two tweaks
 .only_2blks_tweak${standard}:
     mov @tweak[1].16b,@tweak[0].16b
@@ -1087,7 +1095,7 @@ $code.=<<___;
         strb    $wtmp1,[$lastBlk,$remain]
         strb    $wtmp0,[$outp,$remain]
     b.gt .loop${standard}
-    ld1        {@data[0].4s}, [$lastBlk]    
+    ld1        {@data[0].4s}, [$lastBlk]
     eor @data[0].16b, @data[0].16b, @tweak[2].16b
 ___
     &rev32(@data[0],@data[0]);
