@@ -4767,6 +4767,11 @@
 #define NID_sm4_ctr             1139
 #define OBJ_sm4_ctr             OBJ_sm_scheme,104L,7L
 
+#define SN_sm4_xts              "SM4-XTS"
+#define LN_sm4_xts              "sm4-xts"
+#define NID_sm4_xts             1196
+#define OBJ_sm4_xts             OBJ_sm_scheme,104L,10L
+
 #define SN_hmac         "HMAC"
 #define LN_hmac         "hmac"
 #define NID_hmac                855

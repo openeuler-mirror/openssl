@@ -485,6 +485,8 @@ typedef struct cipher_data_st {
     unsigned char *tag;
     size_t tag_len;
     int tag_late;
+    /* SM4 XTS only */
+    int std;
 } CIPHER_DATA;
 
 static int cipher_test_init(EVP_TEST *t, const char *alg)
@@ -564,6 +566,15 @@ static int cipher_test_parse(EVP_TEST *t, const char *keyword,
             cdat->enc = 1;
         else if (strcmp(value, "DECRYPT") == 0)
             cdat->enc = 0;
+        else
+            return -1;
+        return 1;
+    }
+    if (strcmp(keyword, "Standard") == 0) {
+        if (strcmp(value, "GB") == 0)
+            cdat->std = 0;
+        else if (strcmp(value, "IEEE") == 0)
+            cdat->std = 1;
         else
             return -1;
         return 1;
@@ -707,7 +718,11 @@ static int cipher_test_enc(EVP_TEST *t, int enc,
             goto err;
         }
     }
-
+    if (expected->std) {
+        if (!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_XTS_STANDARD, expected->std, NULL)) {
+            goto err;
+        };
+    }
     EVP_CIPHER_CTX_set_padding(ctx, 0);
     t->err = "CIPHERUPDATE_ERROR";
     tmplen = 0;

@@ -1,4 +1,7 @@
 LIBS=../../libcrypto
 SOURCE[../../libcrypto]=\
-        sm4.c
+        sm4.c {- $target{sm4_asm_src} -}
 
+
+GENERATE[vpsm4_ex-armv8.S]=asm/vpsm4_ex-armv8.pl $(PERLASM_SCHEME)
+INCLUDE[vpsm4_ex-armv8.o]=..

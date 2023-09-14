@@ -22,6 +22,10 @@ typedef void (*cbc128_f) (const unsigned char *in, unsigned char *out,
                           size_t len, const void *key,
                           unsigned char ivec[16], int enc);
 
+typedef void (*ecb128_f) (const unsigned char *in, unsigned char *out,
+                          size_t len, const void *key,
+                          int enc);
+
 typedef void (*ctr128_f) (const unsigned char *in, unsigned char *out,
                           size_t blocks, const void *key,
                           const unsigned char ivec[16]);
@@ -149,6 +153,11 @@ size_t CRYPTO_ccm128_tag(CCM128_CONTEXT *ctx, unsigned char *tag, size_t len);
 typedef struct xts128_context XTS128_CONTEXT;
 
 int CRYPTO_xts128_encrypt(const XTS128_CONTEXT *ctx,
+                          const unsigned char iv[16],
+                          const unsigned char *inp, unsigned char *out,
+                          size_t len, int enc);
+
+int CRYPTO_xts128gb_encrypt(const XTS128_CONTEXT *ctx,
                           const unsigned char iv[16],
                           const unsigned char *inp, unsigned char *out,
                           size_t len, int enc);

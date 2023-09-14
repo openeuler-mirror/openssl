@@ -1417,6 +1417,9 @@ unless ($disabled{asm}) {
     if ($target{poly1305_asm_src} ne "") {
         push @{$config{lib_defines}}, "POLY1305_ASM";
     }
+    if ($target{sm4_asm_src} ne "") {
+        push @{$config{lib_defines}}, "VPSM4_EX_ASM";
+    }
 }
 
 my %predefined_C = compiler_predefined($config{CROSS_COMPILE}.$config{CC});
@@ -3372,6 +3375,7 @@ sub print_table_entry
         "mtoutflag",
         "multilib",
         "build_scheme",
+        "sm4_asm_src",
         );
 
     if ($type eq "TABLE") {
