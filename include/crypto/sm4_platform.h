@@ -26,6 +26,10 @@
 #     define HWSM4_cbc_encrypt sm4_v8_cbc_encrypt
 #     define HWSM4_ecb_encrypt sm4_v8_ecb_encrypt
 #     define HWSM4_ctr32_encrypt_blocks sm4_v8_ctr32_encrypt_blocks
+#     define HWSM4_xts_encrypt_gb sm4_v8_xts_encrypt_gb
+#     define HWSM4_xts_decrypt_gb sm4_v8_xts_decrypt_gb
+#     define HWSM4_xts_encrypt sm4_v8_xts_encrypt
+#     define HWSM4_xts_decrypt sm4_v8_xts_decrypt
 #   endif
 #  endif
 # endif /* OPENSSL_CPUID_OBJ */
@@ -46,6 +50,16 @@ void HWSM4_ecb_encrypt(const unsigned char *in, unsigned char *out,
 void HWSM4_ctr32_encrypt_blocks(const unsigned char *in, unsigned char *out,
                                 size_t len, const void *key,
                                 const unsigned char ivec[16]);
+/* xts mode in GB/T 17964-2021 */
+void HWSM4_xts_encrypt_gb(const unsigned char *in, unsigned char *out, size_t length, const SM4_KEY *key1,
+    const SM4_KEY *key2, const uint8_t iv[16]);
+void HWSM4_xts_decrypt_gb(const unsigned char *in, unsigned char *out, size_t length, const SM4_KEY *key1,
+    const SM4_KEY *key2, const uint8_t iv[16]);
+/* xts mode in IEEE Std 1619-2007 */
+void HWSM4_xts_encrypt(const unsigned char *in, unsigned char *out, size_t length, const SM4_KEY *key1,
+    const SM4_KEY *key2, const uint8_t iv[16]);
+void HWSM4_xts_decrypt(const unsigned char *in, unsigned char *out, size_t length, const SM4_KEY *key1,
+    const SM4_KEY *key2, const uint8_t iv[16]);
 # endif /* HWSM4_CAPABLE */
 
 #ifdef VPSM4_EX_CAPABLE

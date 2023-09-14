@@ -11,9 +11,9 @@
 # Oct 2021
 #
 
-# $output is the last argument if it looks like a file (it has an extension)
+# $outut is the last argument if it looks like a file (it has an extension)
 # $flavour is the first argument if it doesn't look like a file
-$output = $#ARGV >= 0 && $ARGV[$#ARGV] =~ m|\.\w+$| ? pop : undef;
+$outut = $#ARGV >= 0 && $ARGV[$#ARGV] =~ m|\.\w+$| ? pop : undef;
 $flavour = $#ARGV >= 0 && $ARGV[0] !~ m|\.| ? shift : undef;
 
 $0 =~ m/(.*[\/\\])[^\/\\]+$/; $dir=$1;
@@ -21,7 +21,7 @@ $0 =~ m/(.*[\/\\])[^\/\\]+$/; $dir=$1;
 ( $xlate="${dir}../../perlasm/arm-xlate.pl" and -f $xlate) or
 die "can't locate arm-xlate.pl";
 
-open OUT,"| \"$^X\" $xlate $flavour \"$output\""
+open OUT,"| \"$^X\" $xlate $flavour \"$outut\""
     or die "can't call $xlate: $!";
 *STDOUT=*OUT;
 
@@ -108,6 +108,120 @@ $code.=<<___;
 	rev64	$data3.4S,$data3.4S
 	ext	$data3.16b,$data3.16b,$data3.16b,#8
 ___
+}
+
+sub mov_reg_to_vec() {
+    my $src0 = shift;
+    my $src1 = shift;
+    my $desv = shift;
+$code.=<<___;
+    mov $desv.d[0],$src0
+    mov $desv.d[1],$src1
+#ifdef __ARMEB__
+    rev32  $desv.16b,$desv.16b
+#endif
+___
+}
+
+sub mov_vec_to_reg() {
+    my $srcv = shift;
+    my $des0 = shift;
+    my $des1 = shift;
+$code.=<<___;
+    mov $des0,$srcv.d[0]
+    mov $des1,$srcv.d[1]
+___
+}
+
+sub compute_tweak() {
+    my $src0 = shift;
+    my $src1 = shift;
+    my $des0 = shift;
+    my $des1 = shift;
+    my $tmp0 = shift;
+    my $tmp1 = shift;
+    my $magic = shift;
+$code.=<<___;
+    extr    x$tmp1,$src1,$src1,#32
+    extr    $des1,$src1,$src0,#63
+    and    w$tmp0,w$magic,w$tmp1,asr#31
+    eor    $des0,x$tmp0,$src0,lsl#1
+___
+}
+
+sub compute_tweak_vec() {
+    my $src = shift;
+    my $des = shift;
+    my $tmp0 = shift;
+    my $tmp1 = shift;
+    my $magic = shift;
+    &rbit($tmp1,$src);
+$code.=<<___;
+    shl  $des.16b, $tmp1.16b, #1
+    ext  $tmp0.16b, $tmp1.16b, $tmp1.16b,#15
+    ushr $tmp0.16b, $tmp0.16b, #7
+    mul  $tmp0.16b, $tmp0.16b, $magic.16b
+    eor  $des.16b, $des.16b, $tmp0.16b
+___
+    &rbit($des,$des);
+}
+
+sub mov_en_to_enc(){
+    my $en = shift;
+    my $enc = shift;
+    if ($en eq "en") {
+$code.=<<___;
+        mov   $enc,1
+___
+    } else {
+$code.=<<___;
+        mov   $enc,0
+___
+    }
+}
+
+sub rbit() {
+    my $dst = shift;
+    my $src = shift;
+
+    if ($src and ("$src" ne "$dst")) {
+        if ($standard eq "_gb") {
+$code.=<<___;
+            rbit $dst.16b,$src.16b
+___
+        } else {
+$code.=<<___;
+            mov $dst.16b,$src.16b
+___
+        }
+    } else {
+        if ($standard eq "_gb") {
+$code.=<<___;
+            rbit $dst.16b,$src.16b
+___
+        }
+    }
+}
+
+sub rev32_armeb() {
+    my $dst = shift;
+    my $src = shift;
+
+    if ($src and ("$src" ne "$dst")) {
+$code.=<<___;
+#ifdef __ARMEB__
+    rev32    $dst.16b,$src.16b
+#else
+    mov    $dst.16b,$src.16b
+#endif
+___
+    } else {
+$code.=<<___;
+#ifdef __ARMEB__
+    rev32    $dst.16b,$dst.16b
+#endif
+___
+    }
 }
 
 $code=<<___;
@@ -594,6 +708,384 @@ $code.=<<___;
 	ret
 .size	${prefix}_ctr32_encrypt_blocks,.-${prefix}_ctr32_encrypt_blocks
 ___
+}}}
+
+
+{{{
+my ($inp,$out,$len,$rk1,$rk2,$ivp)=map("x$_",(0..5));
+my ($blocks)=("x2");
+my ($enc)=("x6");
+my ($remain)=("x7");
+my @twx=map("x$_",(9..24));
+my $lastBlk=("x25");
+
+my @tweak=map("v$_",(8..15));
+my @dat=map("v$_",(16..23));
+my $lastTweak=("v24");
+
+# x/w/v/q registers for compute tweak
+my ($magic)=("8");
+my ($tmp0,$tmp1)=("26","27");
+my ($qMagic,$vMagic)=("q25","v25");
+my ($vTmp0,$vTmp1)=("v26","v27");
+
+sub gen_xts_do_cipher() {
+$code.=<<___;
+.globl    ${prefix}_xts_do_cipher${standard}
+.type    ${prefix}_xts_do_cipher${standard},%function
+.align    5
+${prefix}_xts_do_cipher${standard}:
+	mov w$magic,0x87
+    ldr $qMagic, =0x01010101010101010101010101010187
+	// used to encrypt the XORed plaintext blocks
+	ld1	{@rks[0].4s,@rks[1].4s,@rks[2].4s,@rks[3].4s},[$rk2],#64
+	ld1	{@rks[4].4s,@rks[5].4s,@rks[6].4s,@rks[7].4s},[$rk2]
+    ld1    {@tweak[0].4s}, [$ivp]
+___
+    &rev32(@tweak[0],@tweak[0]);
+    &enc_blk(@tweak[0]);
+	&rev32(@tweak[0],@tweak[0]);
+$code.=<<___;
+	// used to encrypt the initial vector to yield the initial tweak
+	ld1	{@rks[0].4s,@rks[1].4s,@rks[2].4s,@rks[3].4s},[$rk1],#64
+	ld1	{@rks[4].4s,@rks[5].4s,@rks[6].4s,@rks[7].4s},[$rk1]
+
+    and    $remain,$len,#0x0F
+    // convert length into blocks
+    lsr	$blocks,$len,4
+    cmp	$blocks,#1						// $len must be at least 16
+    b.lt	99f
+
+    cmp $remain,0						// if $len is a multiple of 16
+    b.eq .xts_encrypt_blocks${standard}
+										// if $len is not a multiple of 16
+    subs $blocks,$blocks,#1
+    b.eq .only_2blks_tweak${standard}	// if $len is less than 32
+
+.xts_encrypt_blocks${standard}:
+___
+    &rbit(@tweak[0],@tweak[0]);
+	&rev32_armeb(@tweak[0],@tweak[0]);
+    &mov_vec_to_reg(@tweak[0],@twx[0],@twx[1]);
+	&compute_tweak(@twx[0],@twx[1],@twx[2],@twx[3],$tmp0,$tmp1,$magic);
+    &compute_tweak(@twx[2],@twx[3],@twx[4],@twx[5],$tmp0,$tmp1,$magic);
+    &compute_tweak(@twx[4],@twx[5],@twx[6],@twx[7],$tmp0,$tmp1,$magic);
+	&compute_tweak(@twx[6],@twx[7],@twx[8],@twx[9],$tmp0,$tmp1,$magic);
+    &compute_tweak(@twx[8],@twx[9],@twx[10],@twx[11],$tmp0,$tmp1,$magic);
+    &compute_tweak(@twx[10],@twx[11],@twx[12],@twx[13],$tmp0,$tmp1,$magic);
+    &compute_tweak(@twx[12],@twx[13],@twx[14],@twx[15],$tmp0,$tmp1,$magic);
+$code.=<<___;
+1:
+    cmp    $blocks,#8
+___
+    &mov_reg_to_vec(@twx[0],@twx[1],@tweak[0]);
+    &compute_tweak(@twx[14],@twx[15],@twx[0],@twx[1],$tmp0,$tmp1,$magic);
+    &mov_reg_to_vec(@twx[2],@twx[3],@tweak[1]);
+	&compute_tweak(@twx[0],@twx[1],@twx[2],@twx[3],$tmp0,$tmp1,$magic);
+    &mov_reg_to_vec(@twx[4],@twx[5],@tweak[2]);
+    &compute_tweak(@twx[2],@twx[3],@twx[4],@twx[5],$tmp0,$tmp1,$magic);
+    &mov_reg_to_vec(@twx[6],@twx[7],@tweak[3]);
+    &compute_tweak(@twx[4],@twx[5],@twx[6],@twx[7],$tmp0,$tmp1,$magic);
+    &mov_reg_to_vec(@twx[8],@twx[9],@tweak[4]);
+	&compute_tweak(@twx[6],@twx[7],@twx[8],@twx[9],$tmp0,$tmp1,$magic);
+    &mov_reg_to_vec(@twx[10],@twx[11],@tweak[5]);
+    &compute_tweak(@twx[8],@twx[9],@twx[10],@twx[11],$tmp0,$tmp1,$magic);
+    &mov_reg_to_vec(@twx[12],@twx[13],@tweak[6]);
+    &compute_tweak(@twx[10],@twx[11],@twx[12],@twx[13],$tmp0,$tmp1,$magic);
+    &mov_reg_to_vec(@twx[14],@twx[15],@tweak[7]);
+    &compute_tweak(@twx[12],@twx[13],@twx[14],@twx[15],$tmp0,$tmp1,$magic);
+$code.=<<___;
+    b.lt    2f
+    ld1	{@dat[0].4s,@dat[1].4s,@dat[2].4s,@dat[3].4s},[$inp],#64
+___
+    &rbit(@tweak[0],@tweak[0]);
+    &rbit(@tweak[1],@tweak[1]);
+    &rbit(@tweak[2],@tweak[2]);
+    &rbit(@tweak[3],@tweak[3]);
+$code.=<<___;
+    eor @dat[0].16b, @dat[0].16b, @tweak[0].16b
+    eor @dat[1].16b, @dat[1].16b, @tweak[1].16b
+    eor @dat[2].16b, @dat[2].16b, @tweak[2].16b
+    eor @dat[3].16b, @dat[3].16b, @tweak[3].16b
+    ld1	{@dat[4].4s,@dat[5].4s,@dat[6].4s,@dat[7].4s},[$inp],#64
+___
+    &rbit(@tweak[4],@tweak[4]);
+    &rbit(@tweak[5],@tweak[5]);
+    &rbit(@tweak[6],@tweak[6]);
+    &rbit(@tweak[7],@tweak[7]);
+$code.=<<___;
+    eor @dat[4].16b, @dat[4].16b, @tweak[4].16b
+    eor @dat[5].16b, @dat[5].16b, @tweak[5].16b
+    eor @dat[6].16b, @dat[6].16b, @tweak[6].16b
+    eor @dat[7].16b, @dat[7].16b, @tweak[7].16b
+___
+	&rev32(@dat[0],@dat[0]);
+	&rev32(@dat[1],@dat[1]);
+	&rev32(@dat[2],@dat[2]);
+	&rev32(@dat[3],@dat[3]);
+	&rev32(@dat[4],@dat[4]);
+	&rev32(@dat[5],@dat[5]);
+	&rev32(@dat[6],@dat[6]);
+	&rev32(@dat[7],@dat[7]);
+	&enc_4blks(@dat[0],@dat[1],@dat[2],@dat[3]);
+	&enc_4blks(@dat[4],@dat[5],@dat[6],@dat[7]);
+	&rev32(@dat[0],@dat[0]);
+	&rev32(@dat[1],@dat[1]);
+	&rev32(@dat[2],@dat[2]);
+	&rev32(@dat[3],@dat[3]);
+	&rev32(@dat[4],@dat[4]);
+	&rev32(@dat[5],@dat[5]);
+	&rev32(@dat[6],@dat[6]);
+	&rev32(@dat[7],@dat[7]);
+$code.=<<___;
+    eor @dat[0].16b, @dat[0].16b, @tweak[0].16b
+    eor @dat[1].16b, @dat[1].16b, @tweak[1].16b
+    eor @dat[2].16b, @dat[2].16b, @tweak[2].16b
+    eor @dat[3].16b, @dat[3].16b, @tweak[3].16b
+    eor @dat[4].16b, @dat[4].16b, @tweak[4].16b
+    eor @dat[5].16b, @dat[5].16b, @tweak[5].16b
+    eor @dat[6].16b, @dat[6].16b, @tweak[6].16b
+    eor @dat[7].16b, @dat[7].16b, @tweak[7].16b
+
+    // save the last tweak
+    mov $lastTweak.16b,@tweak[7].16b
+	st1	{@dat[0].4s,@dat[1].4s,@dat[2].4s,@dat[3].4s},[$out],#64
+	st1	{@dat[4].4s,@dat[5].4s,@dat[6].4s,@dat[7].4s},[$out],#64
+    subs    $blocks,$blocks,#8
+    b.eq    100f
+    b    1b
+2:
+    // process 4 blocks
+    cmp    $blocks,#4
+    b.lt    1f
+    ld1	{@dat[0].4s,@dat[1].4s,@dat[2].4s,@dat[3].4s},[$inp],#64
+___
+    &rbit(@tweak[0],@tweak[0]);
+    &rbit(@tweak[1],@tweak[1]);
+    &rbit(@tweak[2],@tweak[2]);
+    &rbit(@tweak[3],@tweak[3]);
+$code.=<<___;
+    eor @dat[0].16b, @dat[0].16b, @tweak[0].16b
+    eor @dat[1].16b, @dat[1].16b, @tweak[1].16b
+    eor @dat[2].16b, @dat[2].16b, @tweak[2].16b
+    eor @dat[3].16b, @dat[3].16b, @tweak[3].16b
+___
+	&rev32(@dat[0],@dat[0]);
+	&rev32(@dat[1],@dat[1]);
+	&rev32(@dat[2],@dat[2]);
+	&rev32(@dat[3],@dat[3]);
+	&enc_4blks(@dat[0],@dat[1],@dat[2],@dat[3]);
+	&rev32(@dat[0],@dat[0]);
+	&rev32(@dat[1],@dat[1]);
+	&rev32(@dat[2],@dat[2]);
+	&rev32(@dat[3],@dat[3]);
+$code.=<<___;
+    eor @dat[0].16b, @dat[0].16b, @tweak[0].16b
+    eor @dat[1].16b, @dat[1].16b, @tweak[1].16b
+    eor @dat[2].16b, @dat[2].16b, @tweak[2].16b
+    eor @dat[3].16b, @dat[3].16b, @tweak[3].16b
+	st1	{@dat[0].4s,@dat[1].4s,@dat[2].4s,@dat[3].4s},[$out],#64
+    sub    $blocks,$blocks,#4
+    mov @tweak[0].16b,@tweak[4].16b
+    mov @tweak[1].16b,@tweak[5].16b
+    mov @tweak[2].16b,@tweak[6].16b
+    // save the last tweak
+    mov $lastTweak.16b,@tweak[3].16b
+1:
+    // process last block
+    cmp    $blocks,#1
+    b.lt    100f
+    b.gt    1f
+    ld1	{@dat[0].4s},[$inp],#16
+___
+    &rbit(@tweak[0],@tweak[0]);
+$code.=<<___;
+    eor @dat[0].16b, @dat[0].16b, @tweak[0].16b
+___
+	&rev32(@dat[0],@dat[0]);
+	&enc_blk(@dat[0]);
+	&rev32(@dat[0],@dat[0]);
+$code.=<<___;
+    eor @dat[0].16b, @dat[0].16b, @tweak[0].16b
+    st1    {@dat[0].4s},[$out],#16
+    // save the last tweak
+    mov $lastTweak.16b,@tweak[0].16b
+    b    100f
+1:  // process last 2 blocks
+    cmp    $blocks,#2
+    b.gt    1f
+    ld1    {@dat[0].4s,@dat[1].4s},[$inp],#32
+___
+    &rbit(@tweak[0],@tweak[0]);
+    &rbit(@tweak[1],@tweak[1]);
+$code.=<<___;
+    eor @dat[0].16b, @dat[0].16b, @tweak[0].16b
+    eor @dat[1].16b, @dat[1].16b, @tweak[1].16b
+___
+    &rev32(@dat[0],@dat[0]);
+    &rev32(@dat[1],@dat[1]);
+	&enc_4blks(@dat[0],@dat[1],@dat[2],@dat[3]);
+    &rev32(@dat[0],@dat[0]);
+    &rev32(@dat[1],@dat[1]);
+$code.=<<___;
+    eor @dat[0].16b, @dat[0].16b, @tweak[0].16b
+    eor @dat[1].16b, @dat[1].16b, @tweak[1].16b
+	st1    {@dat[0].4s,@dat[1].4s},[$out],#32
+    // save the last tweak
+    mov $lastTweak.16b,@tweak[1].16b
+    b    100f
+1:  // process last 3 blocks
+    ld1    {@dat[0].4s,@dat[1].4s,@dat[2].4s},[$inp],#48
+___
+    &rbit(@tweak[0],@tweak[0]);
+    &rbit(@tweak[1],@tweak[1]);
+    &rbit(@tweak[2],@tweak[2]);
+$code.=<<___;
+    eor @dat[0].16b, @dat[0].16b, @tweak[0].16b
+    eor @dat[1].16b, @dat[1].16b, @tweak[1].16b
+    eor @dat[2].16b, @dat[2].16b, @tweak[2].16b
+___
+	&rev32(@dat[0],@dat[0]);
+	&rev32(@dat[1],@dat[1]);
+	&rev32(@dat[2],@dat[2]);
+	&enc_4blks(@dat[0],@dat[1],@dat[2],@dat[3]);
+	&rev32(@dat[0],@dat[0]);
+	&rev32(@dat[1],@dat[1]);
+	&rev32(@dat[2],@dat[2]);
+$code.=<<___;
+    eor @dat[0].16b, @dat[0].16b, @tweak[0].16b
+    eor @dat[1].16b, @dat[1].16b, @tweak[1].16b
+    eor @dat[2].16b, @dat[2].16b, @tweak[2].16b
+    st1    {@dat[0].4s,@dat[1].4s,@dat[2].4s},[$out],#48
+    // save the last tweak
+    mov $lastTweak.16b,@tweak[2].16b
+100:
+    cmp $remain,0
+    b.eq 99f
+
+// This brance calculates the last two tweaks, 
+// while the encryption/decryption length is larger than 32
+.last_2blks_tweak${standard}:
+___
+    &rev32_armeb($lastTweak,$lastTweak);
+    &compute_tweak_vec($lastTweak,@tweak[1],$vTmp0,$vTmp1,$vMagic);
+    &compute_tweak_vec(@tweak[1],@tweak[2],$vTmp0,$vTmp1,$vMagic);
+$code.=<<___;
+    b .check_dec${standard}
+
+
+// This brance calculates the last two tweaks, 
+// while the encryption/decryption length is less than 32, who only need two tweaks
+.only_2blks_tweak${standard}:
+    mov @tweak[1].16b,@tweak[0].16b
+___
+    &rev32_armeb(@tweak[1],@tweak[1]);
+    &compute_tweak_vec(@tweak[1],@tweak[2],$vTmp0,$vTmp1,$vMagic);
+$code.=<<___;
+    b .check_dec${standard}
+
+
+// Determine whether encryption or decryption is required.
+// The last two tweaks need to be swapped for decryption.
+.check_dec${standard}:
+	// encryption:1 decryption:0
+    cmp $enc,1
+    b.eq .prcess_last_2blks${standard}
+    mov $vTmp0.16B,@tweak[1].16b
+    mov @tweak[1].16B,@tweak[2].16b
+    mov @tweak[2].16B,$vTmp0.16b
+
+.prcess_last_2blks${standard}:
+___
+    &rev32_armeb(@tweak[1],@tweak[1]);
+    &rev32_armeb(@tweak[2],@tweak[2]);
+$code.=<<___;
+    ld1    {@dat[0].4s},[$inp],#16
+    eor @dat[0].16b, @dat[0].16b, @tweak[1].16b
+___
+	&rev32(@dat[0],@dat[0]);
+	&enc_blk(@dat[0]);
+	&rev32(@dat[0],@dat[0]);
+$code.=<<___;
+    eor @dat[0].16b, @dat[0].16b, @tweak[1].16b
+    st1    {@dat[0].4s},[$out],#16
+
+    sub $lastBlk,$out,16
+    .loop${standard}:
+        subs $remain,$remain,1
+        ldrb    w$tmp0,[$lastBlk,$remain]
+        ldrb    w$tmp1,[$inp,$remain]
+        strb    w$tmp1,[$lastBlk,$remain]
+        strb    w$tmp0,[$out,$remain]
+    b.gt .loop${standard}
+    ld1        {@dat[0].4s}, [$lastBlk]    
+    eor @dat[0].16b, @dat[0].16b, @tweak[2].16b
+___
+	&rev32(@dat[0],@dat[0]);
+	&enc_blk(@dat[0]);
+	&rev32(@dat[0],@dat[0]);
+$code.=<<___;
+    eor @dat[0].16b, @dat[0].16b, @tweak[2].16b
+    st1        {@dat[0].4s}, [$lastBlk]
+99:
+    ret
+.size    ${prefix}_xts_do_cipher${standard},.-${prefix}_xts_do_cipher${standard}
+___
+} #end of gen_xts_do_cipher
+
+}}}
+
+{{{
+my ($enc)=("w6");
+
+sub gen_xts_cipher() {
+	my $en = shift;
+$code.=<<___;
+.globl    ${prefix}_xts_${en}crypt${standard}
+.type    ${prefix}_xts_${en}crypt${standard},%function
+.align    5
+${prefix}_xts_${en}crypt${standard}:
+    stp        x15, x16, [sp, #-0x10]!
+    stp        x17, x18, [sp, #-0x10]!
+    stp        x19, x20, [sp, #-0x10]!
+    stp        x21, x22, [sp, #-0x10]!
+    stp        x23, x24, [sp, #-0x10]!
+    stp        x25, x26, [sp, #-0x10]!
+    stp        x27, x28, [sp, #-0x10]!
+    stp        x29, x30, [sp, #-0x10]!
+    stp        d8, d9, [sp, #-0x10]!
+    stp        d10, d11, [sp, #-0x10]!
+    stp        d12, d13, [sp, #-0x10]!
+    stp        d14, d15, [sp, #-0x10]!
+___
+    &mov_en_to_enc($en,$enc);
+$code.=<<___;
+    bl    ${prefix}_xts_do_cipher${standard}
+    ldp        d14, d15, [sp], #0x10
+    ldp        d12, d13, [sp], #0x10
+    ldp        d10, d11, [sp], #0x10
+    ldp        d8, d9, [sp], #0x10
+    ldp        x29, x30, [sp], #0x10
+    ldp        x27, x28, [sp], #0x10
+    ldp        x25, x26, [sp], #0x10
+    ldp        x23, x24, [sp], #0x10
+    ldp        x21, x22, [sp], #0x10
+    ldp        x19, x20, [sp], #0x10
+    ldp        x17, x18, [sp], #0x10
+    ldp        x15, x16, [sp], #0x10
+    ret
+.size    ${prefix}_xts_${en}crypt${standard},.-${prefix}_xts_${en}crypt${standard}
+___
+
+} # end of gen_xts_cipher
+$standard="_gb";
+&gen_xts_do_cipher();
+&gen_xts_cipher("en");
+&gen_xts_cipher("de");
+$standard="";
+&gen_xts_do_cipher();
+&gen_xts_cipher("en");
+&gen_xts_cipher("de");
 }}}
 ########################################
 {   my  %opcode = (

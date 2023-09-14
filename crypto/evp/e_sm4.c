@@ -281,6 +281,34 @@ static int sm4_xts_init_key(EVP_CIPHER_CTX *ctx, const unsigned char *key,
             const int bytes = EVP_CIPHER_CTX_key_length(ctx) / 2;
             xctx->stream_gb = NULL;
             xctx->stream = NULL;
+#ifdef HWSM4_CAPABLE
+            if (HWSM4_CAPABLE) {
+                if (enc) {
+                    HWSM4_set_encrypt_key(key, &xctx->ks1.ks);
+                    xctx->xts.block1 = (block128_f) HWSM4_encrypt;
+# ifdef HWSM4_xts_encrypt_gb
+                    xctx->stream_gb = HWSM4_xts_encrypt_gb;
+# endif
+# ifdef HWSM4_xts_encrypt
+                    xctx->stream = HWSM4_xts_encrypt;
+# endif
+                } else {
+                    HWSM4_set_decrypt_key(key, &xctx->ks1.ks);
+                    xctx->xts.block1 = (block128_f) HWSM4_decrypt;
+# ifdef HWSM4_xts_decrypt_gb
+                    xctx->stream_gb = HWSM4_xts_decrypt_gb;
+# endif
+# ifdef HWSM4_xts_decrypt
+                    xctx->stream = HWSM4_xts_decrypt;
+# endif
+                }
+                HWSM4_set_encrypt_key(key + bytes, &xctx->ks2.ks);
+                xctx->xts.block2 = (block128_f) HWSM4_encrypt;
+
+                xctx->xts.key1 = &xctx->ks1;
+                break;
+            } else
+#endif
 #ifdef VPSM4_EX_CAPABLE
             if (VPSM4_EX_CAPABLE) {
                 if (enc) {
