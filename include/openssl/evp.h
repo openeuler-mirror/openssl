@@ -353,6 +353,9 @@ int (*EVP_CIPHER_meth_get_ctrl(const EVP_CIPHER *cipher))(EVP_CIPHER_CTX *,
 
 # define         EVP_CTRL_GET_IVLEN                      0x25
 
+/* Set the XTS mode standard, SM4 only */
+# define         EVP_CTRL_XTS_STANDARD                   0x26
+
 /* Padding modes */
 #define EVP_PADDING_PKCS7       1
 #define EVP_PADDING_ISO7816_4   2
@@ -937,6 +940,7 @@ const EVP_CIPHER *EVP_sm4_cfb128(void);
 #  define EVP_sm4_cfb EVP_sm4_cfb128
 const EVP_CIPHER *EVP_sm4_ofb(void);
 const EVP_CIPHER *EVP_sm4_ctr(void);
+const EVP_CIPHER *EVP_sm4_xts(void);
 # endif
 
 # if OPENSSL_API_COMPAT < 0x10100000L
