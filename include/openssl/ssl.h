@@ -300,6 +300,11 @@ typedef int (*SSL_verify_cb)(int preverify_ok, X509_STORE_CTX *x509_ctx);
  * Reserved value (until OpenSSL 1.2.0)                  0x00000001U
  * Reserved value (until OpenSSL 1.2.0)                  0x00000002U
  */
+#ifndef OPENSSL_NO_TLCP
+/* Use reserved value for the position of enc cert, default is placed at the end */
+# define SSL_OP_ENCCERT_SECOND_POSITION                  0x00000002U
+#endif
+
 /* Allow initial connection to servers that don't support RI */
 # define SSL_OP_LEGACY_SERVER_CONNECT                    0x00000004U
 
@@ -383,8 +388,15 @@ typedef int (*SSL_verify_cb)(int preverify_ok, X509_STORE_CTX *x509_ctx);
 # define SSL_OP_NO_DTLSv1                                0x04000000U
 # define SSL_OP_NO_DTLSv1_2                              0x08000000U
 
+#ifndef OPENSSL_NO_TLCP
+/* Use reserved value for TCLP(GB/T 38636-2020) */
+# define SSL_OP_NO_TLCP                                  0x00000001U
+# define SSL_OP_NO_SSL_MASK (SSL_OP_NO_TLCP|SSL_OP_NO_SSLv3|\
+        SSL_OP_NO_TLSv1|SSL_OP_NO_TLSv1_1|SSL_OP_NO_TLSv1_2|SSL_OP_NO_TLSv1_3)
+#else
 # define SSL_OP_NO_SSL_MASK (SSL_OP_NO_SSLv3|\
         SSL_OP_NO_TLSv1|SSL_OP_NO_TLSv1_1|SSL_OP_NO_TLSv1_2|SSL_OP_NO_TLSv1_3)
+#endif
 # define SSL_OP_NO_DTLS_MASK (SSL_OP_NO_DTLSv1|SSL_OP_NO_DTLSv1_2)
 
 /* Disallow all renegotiation */
@@ -1041,6 +1053,11 @@ typedef enum {
     TLS_ST_SR_END_OF_EARLY_DATA
 } OSSL_HANDSHAKE_STATE;
 
+#ifndef OPENSSL_NO_TLCP
+# define SSL_USAGE_SIG              0
+# define SSL_USAGE_ENC              1
+#endif
+
 /*
  * Most of the following state values are no longer used and are defined to be
  * the closest equivalent value in the current state machine code. Not all
@@ -1177,6 +1194,19 @@ DECLARE_PEM_rw(SSL_SESSION, SSL_SESSION)
 /* fatal */
 # define SSL_AD_INAPPROPRIATE_FALLBACK   TLS1_AD_INAPPROPRIATE_FALLBACK
 # define SSL_AD_NO_APPLICATION_PROTOCOL  TLS1_AD_NO_APPLICATION_PROTOCOL
+
+/* These alert types are for TLCP */
+# define SSL_AD_UNSUPPORTED_SITE2SITE    TLCP_AD_UNSUPPORTED_SITE2SITE
+/* fatal */
+# define SSL_AD_NO_AREA                  TLCP_AD_NO_AREA
+# define SSL_AD_UNSUPPORTED_AREATYPE     TLCP_AD_UNSUPPORTED_AREATYPE
+# define SSL_AD_BAD_IBCPARAM             TLCP_AD_BAD_IBCPARAM
+/* fatal */
+# define SSL_AD_UNSUPPORTED_IBCPARAM     TLCP_AD_UNSUPPORTED_IBCPARAM
+/* fatal */
+# define SSL_AD_IDENTITY_NEED            TLCP_AD_IDENTITY_NEED
+/* fatal */
+
 # define SSL_ERROR_NONE                  0
 # define SSL_ERROR_SSL                   1
 # define SSL_ERROR_WANT_READ             2
@@ -1570,9 +1600,20 @@ __owur int SSL_use_RSAPrivateKey(SSL *ssl, RSA *rsa);
 __owur int SSL_use_RSAPrivateKey_ASN1(SSL *ssl, const unsigned char *d,
                                       long len);
 # endif
+# ifndef OPENSSL_NO_TLCP
+__owur int SSL_use_gm_PrivateKey(SSL *ssl, EVP_PKEY *pkey, int usage);
+__owur int SSL_use_gm_PrivateKey_ASN1(int pk, SSL *ssl, const unsigned char *d,
+                                   long len, int usage);
+# endif
 __owur int SSL_use_PrivateKey(SSL *ssl, EVP_PKEY *pkey);
 __owur int SSL_use_PrivateKey_ASN1(int pk, SSL *ssl, const unsigned char *d,
                                    long len);
+# ifndef OPENSSL_NO_TLCP
+__owur int SSL_use_gm_certificate(SSL *ssl, X509 *x, int usage);
+__owur int SSL_use_gm_certificate_ASN1(SSL *ssl, const unsigned char *d, int len, int usage);
+__owur int SSL_use_gm_cert_and_key(SSL *ssl, X509 *x509, EVP_PKEY *privatekey,
+                                STACK_OF(X509) *chain, int override, int usage);
+# endif
 __owur int SSL_use_certificate(SSL *ssl, X509 *x);
 __owur int SSL_use_certificate_ASN1(SSL *ssl, const unsigned char *d, int len);
 __owur int SSL_use_cert_and_key(SSL *ssl, X509 *x509, EVP_PKEY *privatekey,
@@ -1595,12 +1636,24 @@ __owur int SSL_CTX_use_serverinfo_file(SSL_CTX *ctx, const char *file);
 __owur int SSL_use_RSAPrivateKey_file(SSL *ssl, const char *file, int type);
 #endif
 
+#ifndef OPENSSL_NO_TLCP
+__owur int SSL_use_gm_PrivateKey_file(SSL *ssl, const char *file, int type, int usage);
+__owur int SSL_use_gm_certificate_file(SSL *ssl, const char *file, int type, int usage);
+#endif
+
 __owur int SSL_use_PrivateKey_file(SSL *ssl, const char *file, int type);
 __owur int SSL_use_certificate_file(SSL *ssl, const char *file, int type);
 
 #ifndef OPENSSL_NO_RSA
 __owur int SSL_CTX_use_RSAPrivateKey_file(SSL_CTX *ctx, const char *file,
                                           int type);
+#endif
+
+#ifndef OPENSSL_NO_TLCP
+__owur int SSL_CTX_use_gm_PrivateKey_file(SSL_CTX *ctx, const char *file,
+                                       int type, int usage);
+__owur int SSL_CTX_use_gm_certificate_file(SSL_CTX *ctx, const char *file,
+                                        int type, int usage);
 #endif
 __owur int SSL_CTX_use_PrivateKey_file(SSL_CTX *ctx, const char *file,
                                        int type);
@@ -1705,6 +1758,18 @@ __owur int SSL_CTX_use_RSAPrivateKey(SSL_CTX *ctx, RSA *rsa);
 __owur int SSL_CTX_use_RSAPrivateKey_ASN1(SSL_CTX *ctx, const unsigned char *d,
                                           long len);
 # endif
+
+# ifndef OPENSSL_NO_TLCP
+__owur int SSL_CTX_use_gm_PrivateKey(SSL_CTX *ctx, EVP_PKEY *pkey, int usage);
+__owur int SSL_CTX_use_gm_PrivateKey_ASN1(int pk, SSL_CTX *ctx,
+                                       const unsigned char *d, long len, int usage);
+__owur int SSL_CTX_use_gm_certificate(SSL_CTX *ctx, X509 *x, int usage);
+__owur int SSL_CTX_use_gm_certificate_ASN1(SSL_CTX *ctx, int len,
+                                        const unsigned char *d, int usage);
+__owur int SSL_CTX_use_gm_cert_and_key(SSL_CTX *ctx, X509 *x509, EVP_PKEY *privatekey,
+                                    STACK_OF(X509) *chain, int override, int usage);
+# endif
+
 __owur int SSL_CTX_use_PrivateKey(SSL_CTX *ctx, EVP_PKEY *pkey);
 __owur int SSL_CTX_use_PrivateKey_ASN1(int pk, SSL_CTX *ctx,
                                        const unsigned char *d, long len);
@@ -1882,6 +1947,12 @@ DEPRECATEDIN_1_1_0(__owur const SSL_METHOD *SSLv3_client_method(void))
 __owur const SSL_METHOD *TLS_method(void);
 __owur const SSL_METHOD *TLS_server_method(void);
 __owur const SSL_METHOD *TLS_client_method(void);
+
+#ifndef OPENSSL_NO_TLCP
+__owur const SSL_METHOD *TLCP_method(void);
+__owur const SSL_METHOD *TLCP_server_method(void);
+__owur const SSL_METHOD *TLCP_client_method(void);
+#endif
 
 # ifndef OPENSSL_NO_TLS1_METHOD
 DEPRECATEDIN_1_1_0(__owur const SSL_METHOD *TLSv1_method(void)) /* TLSv1.0 */

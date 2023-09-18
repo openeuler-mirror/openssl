@@ -361,7 +361,11 @@ static int state_machine(SSL *s, int server)
                 goto end;
             }
         } else {
+#ifndef OPENSSL_NO_TLCP
+            if ((s->version >> 8) != SSL3_VERSION_MAJOR && s->version != TLCP_VERSION) {
+#else
             if ((s->version >> 8) != SSL3_VERSION_MAJOR) {
+#endif
                 SSLfatal(s, SSL_AD_NO_ALERT, SSL_F_STATE_MACHINE,
                          ERR_R_INTERNAL_ERROR);
                 goto end;

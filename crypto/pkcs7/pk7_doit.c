@@ -946,6 +946,9 @@ int PKCS7_signatureVerify(BIO *bio, PKCS7 *p7, PKCS7_SIGNER_INFO *si,
     STACK_OF(X509_ATTRIBUTE) *sk;
     BIO *btmp;
     EVP_PKEY *pkey;
+#ifndef OPENSSL_NO_SM2
+    EVP_PKEY_CTX *pctx = NULL;
+#endif
 
     mdc_tmp = EVP_MD_CTX_new();
     if (mdc_tmp == NULL) {
@@ -1013,7 +1016,19 @@ int PKCS7_signatureVerify(BIO *bio, PKCS7 *p7, PKCS7_SIGNER_INFO *si,
             goto err;
         }
 
-        if (!EVP_VerifyInit_ex(mdc_tmp, EVP_get_digestbynid(md_type), NULL))
+        pkey = X509_get0_pubkey(x509);
+        if (!pkey) {
+            ret = -1;
+            goto err;
+        }
+
+        ret =
+#ifndef OPENSSL_NO_SM2
+        EVP_PKEY_is_sm2(pkey) ?
+        EVP_DigestVerifyInit(mdc_tmp, &pctx, EVP_get_digestbynid(md_type), NULL, pkey) :
+#endif
+        EVP_VerifyInit_ex(mdc_tmp, EVP_get_digestbynid(md_type), NULL);
+        if (!ret)
             goto err;
 
         alen = ASN1_item_i2d((ASN1_VALUE *)sk, &abuf,
@@ -1036,7 +1051,11 @@ int PKCS7_signatureVerify(BIO *bio, PKCS7 *p7, PKCS7_SIGNER_INFO *si,
         goto err;
     }
 
-    i = EVP_VerifyFinal(mdc_tmp, os->data, os->length, pkey);
+    i =
+#ifndef OPENSSL_NO_SM2
+    EVP_PKEY_is_sm2(pkey) ? EVP_DigestVerifyFinal(mdc_tmp, os->data, os->length) :
+#endif
+    EVP_VerifyFinal(mdc_tmp, os->data, os->length, pkey);
     if (i <= 0) {
         PKCS7err(PKCS7_F_PKCS7_SIGNATUREVERIFY, PKCS7_R_SIGNATURE_FAILURE);
         ret = -1;

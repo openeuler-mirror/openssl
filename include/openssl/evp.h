@@ -1015,6 +1015,10 @@ const unsigned char *EVP_PKEY_get0_poly1305(const EVP_PKEY *pkey, size_t *len);
 const unsigned char *EVP_PKEY_get0_siphash(const EVP_PKEY *pkey, size_t *len);
 # endif
 
+# ifndef OPENSSL_NO_SM2
+int EVP_PKEY_is_sm2(EVP_PKEY *pkey);
+# endif
+
 # ifndef OPENSSL_NO_RSA
 struct rsa_st;
 int EVP_PKEY_set1_RSA(EVP_PKEY *pkey, struct rsa_st *key);

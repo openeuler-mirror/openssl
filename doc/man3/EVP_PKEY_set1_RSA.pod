@@ -9,7 +9,7 @@ EVP_PKEY_assign_RSA, EVP_PKEY_assign_DSA, EVP_PKEY_assign_DH,
 EVP_PKEY_assign_EC_KEY, EVP_PKEY_assign_POLY1305, EVP_PKEY_assign_SIPHASH,
 EVP_PKEY_get0_hmac, EVP_PKEY_get0_poly1305, EVP_PKEY_get0_siphash,
 EVP_PKEY_type, EVP_PKEY_id, EVP_PKEY_base_id, EVP_PKEY_set_alias_type,
-EVP_PKEY_set1_engine, EVP_PKEY_get0_engine - EVP_PKEY assignment functions
+EVP_PKEY_is_sm2, EVP_PKEY_set1_engine, EVP_PKEY_get0_engine - EVP_PKEY assignment functions
 
 =head1 SYNOPSIS
 
@@ -44,6 +44,8 @@ EVP_PKEY_set1_engine, EVP_PKEY_get0_engine - EVP_PKEY assignment functions
  int EVP_PKEY_base_id(const EVP_PKEY *pkey);
  int EVP_PKEY_type(int type);
  int EVP_PKEY_set_alias_type(EVP_PKEY *pkey, int type);
+
+ int EVP_PKEY_is_sm2(EVP_PKEY *pkey);
 
  ENGINE *EVP_PKEY_get0_engine(const EVP_PKEY *pkey);
  int EVP_PKEY_set1_engine(EVP_PKEY *pkey, ENGINE *engine);
@@ -93,6 +95,9 @@ EVP_PKEY_set_alias_type() allows modifying a EVP_PKEY to use a
 different set of algorithms than the default. This is currently used
 to support SM2 keys, which use an identical encoding to ECDSA.
 
+EVP_PKEY_is_sm2() can be used to determine whether the B<pkey> is
+SM2 curve.
+
 =head1 NOTES
 
 In accordance with the OpenSSL naming convention the key obtained
@@ -133,6 +138,8 @@ type or B<NID_undef> (equivalently B<EVP_PKEY_NONE>) on error.
 EVP_PKEY_set1_engine() returns 1 for success and 0 for failure.
 
 EVP_PKEY_set_alias_type() returns 1 for success and 0 for error.
+
+EVP_PKEY_is_sm2() returns 1 for success and 0 for error.
 
 =head1 EXAMPLES
 

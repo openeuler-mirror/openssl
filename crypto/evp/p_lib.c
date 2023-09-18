@@ -459,6 +459,24 @@ const unsigned char *EVP_PKEY_get0_siphash(const EVP_PKEY *pkey, size_t *len)
 }
 #endif
 
+# ifndef OPENSSL_NO_SM2
+int EVP_PKEY_is_sm2(EVP_PKEY *pkey)
+{
+    EC_KEY *eckey;
+    const EC_GROUP *group;
+    if (pkey == NULL) {
+        return 0;
+    }
+    if (EVP_PKEY_id(pkey) == EVP_PKEY_EC
+        && (eckey = EVP_PKEY_get0_EC_KEY(pkey)) != NULL
+        && (group = EC_KEY_get0_group(eckey)) != NULL
+        && EC_GROUP_get_curve_name(group) == NID_sm2) {
+            return 1;
+    }
+    return EVP_PKEY_id(pkey) == EVP_PKEY_SM2;
+}
+# endif
+
 #ifndef OPENSSL_NO_RSA
 int EVP_PKEY_set1_RSA(EVP_PKEY *pkey, RSA *key)
 {

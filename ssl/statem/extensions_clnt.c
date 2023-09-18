@@ -134,6 +134,9 @@ static int use_ecc(SSL *s)
         alg_a = c->algorithm_auth;
         if ((alg_k & (SSL_kECDHE | SSL_kECDHEPSK))
                 || (alg_a & SSL_aECDSA)
+#ifndef OPENSSL_NO_TLCP
+                || (alg_k & SSL_kSM2DHE) || (alg_a & SSL_aSM2)
+#endif
                 || c->min_tls >= TLS1_3_VERSION) {
             ret = 1;
             break;

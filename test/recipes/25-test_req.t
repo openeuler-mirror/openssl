@@ -15,7 +15,7 @@ use OpenSSL::Test qw/:DEFAULT srctop_file/;
 
 setup("test_req");
 
-plan tests => 14;
+plan tests => 15;
 
 require_ok(srctop_file('test','recipes','tconversion.pl'));
 
@@ -181,6 +181,43 @@ subtest "generating certificate requests" => sub {
        "Verifying signature on request");
 };
 
+subtest "generating SM2 certificate requests" => sub {
+    plan tests => 5;
+
+    SKIP: {
+        skip "SM2 is not supported by this OpenSSL build", 5
+        if disabled("sm2");
+        ok(run(app(["openssl", "req", "-config", srctop_file("test", "test.cnf"),
+                    "-new", "-key", srctop_file("test", "certs", "sm2.key"),
+                    "-sigopt", "sm2_id:1234567812345678",
+                    "-out", "testreq.pem", "-sm3"])),
+           "Generating SM2 certificate request");
+
+        ok(run(app(["openssl", "req", "-config", srctop_file("test", "test.cnf"),
+                    "-verify", "-in", "testreq.pem", "-noout",
+                    "-sm2-id", "1234567812345678", "-sm3"])),
+           "Verifying signature on SM2 certificate request");
+
+        # Use default sm2 id
+        ok(run(app(["openssl", "x509", "-req", "-extfile", srctop_file("test", "CAss.cnf"),
+                    "-extensions", "v3_ca", "-sm3", "-days", "365",
+                    "-in", "testreq.pem", "-signkey", srctop_file("test", "certs", "sm2.key"),
+                    "-out", "testsign.pem"])),
+           "Signing SM2 certificate request");
+
+        ok(run(app(["openssl", "req", "-config", srctop_file("test", "test.cnf"),
+                    "-new", "-key", srctop_file("test", "certs", "sm2.key"),
+                    "-sigopt", "sm2_hex_id:DEADBEEF",
+                    "-out", "testreq.pem", "-sm3"])),
+           "Generating SM2 certificate request with hex id");
+
+        ok(run(app(["openssl", "req", "-config", srctop_file("test", "test.cnf"),
+                    "-verify", "-in", "testreq.pem", "-noout",
+                    "-sm2-hex-id", "DEADBEEF", "-sm3"])),
+           "Verifying signature on SM2 certificate request");
+    }
+};
+
 my @openssl_args = ("req", "-config", srctop_file("apps", "openssl.cnf"));
 
 run_conversion('req conversions',
@@ -188,7 +225,7 @@ run_conversion('req conversions',
 run_conversion('req conversions -- testreq2',
                srctop_file("test", "testreq2.pem"));
 
-unlink "testkey.pem", "testreq.pem", "testreq_withattrs_pem.pem", "testreq_withattrs_der.pem";
+unlink "testkey.pem", "testreq.pem", "testreq_withattrs_pem.pem", "testreq_withattrs_der.pem", "testsign.pem";
 
 sub run_conversion {
     my $title = shift;

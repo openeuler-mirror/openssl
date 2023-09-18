@@ -227,6 +227,29 @@ static int get_cert_verify_tbs_data(SSL *s, unsigned char *tls13tbs,
     return 1;
 }
 
+#ifndef OPENSSL_NO_TLCP
+static int get_tbs_hash_data(void *hdata, size_t hdatalen, unsigned char *out, size_t *outlen)
+{
+    EVP_MD_CTX *md_ctx;
+    int rv = 0;
+
+    md_ctx = EVP_MD_CTX_new();
+    if (md_ctx == NULL)
+        goto err;
+
+    // TLCP is only used SM3
+    if (!EVP_DigestInit(md_ctx, EVP_sm3())
+            || !EVP_DigestUpdate(md_ctx, (const void *)hdata, hdatalen)
+            || !EVP_DigestFinal(md_ctx, out, (unsigned int *)outlen)) {
+        goto err;
+    }
+    rv = 1;
+err:
+    EVP_MD_CTX_free(md_ctx);
+    return rv;
+}
+#endif
+
 int tls_construct_cert_verify(SSL *s, WPACKET *pkt)
 {
     EVP_PKEY *pkey = NULL;
@@ -238,6 +261,9 @@ int tls_construct_cert_verify(SSL *s, WPACKET *pkt)
     unsigned char *sig = NULL;
     unsigned char tls13tbs[TLS13_TBS_PREAMBLE_SIZE + EVP_MAX_MD_SIZE];
     const SIGALG_LOOKUP *lu = s->s3->tmp.sigalg;
+#ifndef OPENSSL_NO_TLCP
+    unsigned char out[EVP_MAX_MD_SIZE] = {0};
+#endif
 
     if (lu == NULL || s->s3->tmp.cert == NULL) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
@@ -251,6 +277,15 @@ int tls_construct_cert_verify(SSL *s, WPACKET *pkt)
                  ERR_R_INTERNAL_ERROR);
         goto err;
     }
+#ifndef OPENSSL_NO_TLCP
+    if (SSL_IS_TLCP(s) && EVP_PKEY_is_sm2(pkey)) {
+        if (!EVP_PKEY_set_alias_type(pkey, EVP_PKEY_SM2)) {
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
+                 ERR_R_INTERNAL_ERROR);
+            goto err;
+        }
+    }
+#endif
 
     mctx = EVP_MD_CTX_new();
     if (mctx == NULL) {
@@ -264,7 +299,17 @@ int tls_construct_cert_verify(SSL *s, WPACKET *pkt)
         /* SSLfatal() already called */
         goto err;
     }
-
+#ifndef OPENSSL_NO_TLCP
+    if (SSL_IS_TLCP(s)) {
+        if (!get_tbs_hash_data(hdata, hdatalen, out, &hdatalen)) {
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
+                ERR_R_INTERNAL_ERROR);
+            goto err;
+        }
+        /* Use new hash data for sign */
+        hdata = out;
+    }
+#endif
     if (SSL_USE_SIGALGS(s) && !WPACKET_put_bytes_u16(pkt, lu->sigalg)) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
                  ERR_R_INTERNAL_ERROR);
@@ -359,6 +404,9 @@ MSG_PROCESS_RETURN tls_process_cert_verify(SSL *s, PACKET *pkt)
     unsigned char tls13tbs[TLS13_TBS_PREAMBLE_SIZE + EVP_MAX_MD_SIZE];
     EVP_MD_CTX *mctx = EVP_MD_CTX_new();
     EVP_PKEY_CTX *pctx = NULL;
+#ifndef OPENSSL_NO_TLCP
+    unsigned char out[EVP_MAX_MD_SIZE] = {0};
+#endif
 
     if (mctx == NULL) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_PROCESS_CERT_VERIFY,
@@ -373,6 +421,15 @@ MSG_PROCESS_RETURN tls_process_cert_verify(SSL *s, PACKET *pkt)
                  ERR_R_INTERNAL_ERROR);
         goto err;
     }
+#ifndef OPENSSL_NO_TLCP
+    if (SSL_IS_TLCP(s) && EVP_PKEY_is_sm2(pkey)) {
+        if (!EVP_PKEY_set_alias_type(pkey, EVP_PKEY_SM2)) {
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_PROCESS_CERT_VERIFY,
+                 ERR_R_INTERNAL_ERROR);
+            goto err;
+        }
+    }
+#endif
 
     if (ssl_cert_lookup_by_pkey(pkey, NULL) == NULL) {
         SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_F_TLS_PROCESS_CERT_VERIFY,
@@ -448,6 +505,17 @@ MSG_PROCESS_RETURN tls_process_cert_verify(SSL *s, PACKET *pkt)
         /* SSLfatal() already called */
         goto err;
     }
+#ifndef OPENSSL_NO_TLCP
+    if (SSL_IS_TLCP(s)) {
+        if (!get_tbs_hash_data(hdata, hdatalen, out, &hdatalen)) {
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_PROCESS_CERT_VERIFY,
+                ERR_R_INTERNAL_ERROR);
+            goto err;
+        }
+        /* Use new hash data for verify */
+        hdata = out;
+    }
+#endif
 
 #ifdef SSL_DEBUG
     fprintf(stderr, "Using client verify alg %s\n",
@@ -907,6 +975,60 @@ static int ssl_add_cert_to_wpacket(SSL *s, WPACKET *pkt, X509 *x, int chain)
     return 1;
 }
 
+#ifndef OPENSSL_NO_TLCP
+static int ssl_add_sm2_cert_for_tlcp(SSL *s, STACK_OF(X509) *chain, WPACKET *pkt, X509 *sign_cert)
+{
+    CERT_PKEY *enc_cpk;
+    X509 *x;
+    int i = 0;
+    int idx = 0;
+    int count;
+    X509 *enc_cert;
+
+    enc_cpk = &s->cert->pkeys[SSL_PKEY_SM2_ENC];
+    // server must have enc cert
+    if (s->server && (enc_cpk == NULL || enc_cpk->x509 == NULL))
+        return 0;
+
+    enc_cert = enc_cpk->x509;
+
+    if (sign_cert != NULL) {
+        if (!ssl_add_cert_to_wpacket(s, pkt, sign_cert, idx++)) {
+            return 0;
+        }
+    } else {
+        if (!ssl_add_cert_to_wpacket(s, pkt, sk_X509_value(chain, i++), idx++)) {
+            return 0;
+        }
+    }
+
+    // enc cert put the second position
+    if (enc_cert != NULL && (s->options & SSL_OP_ENCCERT_SECOND_POSITION)) {
+        if (!ssl_add_cert_to_wpacket(s, pkt, enc_cert, idx++)) {
+            return 0;
+        }
+        enc_cert = NULL;
+    }
+
+    count = sk_X509_num(chain);
+    for (; i < count; i++) {
+        x = sk_X509_value(chain, i);
+        if (!ssl_add_cert_to_wpacket(s, pkt, x, idx++)) {
+            return 0;
+        }
+    }
+
+    // enc cert in the last position
+    if (enc_cert) {
+        if (!ssl_add_cert_to_wpacket(s, pkt, enc_cpk->x509, idx++)) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+#endif
+
 /* Add certificate chain to provided WPACKET */
 static int ssl_add_cert_chain(SSL *s, WPACKET *pkt, CERT_PKEY *cpk)
 {
@@ -972,6 +1094,14 @@ static int ssl_add_cert_chain(SSL *s, WPACKET *pkt, CERT_PKEY *cpk)
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_SSL_ADD_CERT_CHAIN, i);
             return 0;
         }
+#ifndef OPENSSL_NO_TLCP
+        if (SSL_IS_TLCP(s)) {
+            if (!ssl_add_sm2_cert_for_tlcp(s, chain, pkt, NULL)) {
+                X509_STORE_CTX_free(xs_ctx);
+                return 0;
+            }
+        } else {
+#endif
         chain_count = sk_X509_num(chain);
         for (i = 0; i < chain_count; i++) {
             x = sk_X509_value(chain, i);
@@ -982,6 +1112,9 @@ static int ssl_add_cert_chain(SSL *s, WPACKET *pkt, CERT_PKEY *cpk)
                 return 0;
             }
         }
+#ifndef OPENSSL_NO_TLCP
+        }
+#endif
         X509_STORE_CTX_free(xs_ctx);
     } else {
         i = ssl_security_cert_chain(s, extra_certs, x, 0);
@@ -989,6 +1122,11 @@ static int ssl_add_cert_chain(SSL *s, WPACKET *pkt, CERT_PKEY *cpk)
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_SSL_ADD_CERT_CHAIN, i);
             return 0;
         }
+#ifndef OPENSSL_NO_TLCP
+        if (SSL_IS_TLCP(s)) {
+            return ssl_add_sm2_cert_for_tlcp(s, extra_certs, pkt, x);
+        } else {
+#endif
         if (!ssl_add_cert_to_wpacket(s, pkt, x, 0)) {
             /* SSLfatal() already called */
             return 0;
@@ -1000,6 +1138,9 @@ static int ssl_add_cert_chain(SSL *s, WPACKET *pkt, CERT_PKEY *cpk)
                 return 0;
             }
         }
+#ifndef OPENSSL_NO_TLCP
+        }
+#endif
     }
     return 1;
 }
@@ -1444,6 +1585,9 @@ static const version_info tls_version_table[] = {
 #else
     {TLS1_VERSION, NULL, NULL},
 #endif
+#ifndef OPENSSL_NO_TLCP
+    {TLCP_VERSION, tlcp_client_method, tlcp_server_method},
+#endif
 #ifndef OPENSSL_NO_SSL3
     {SSL3_VERSION, sslv3_client_method, sslv3_server_method},
 #else
@@ -1596,7 +1740,10 @@ int ssl_version_supported(const SSL *s, int version, const SSL_METHOD **meth)
     }
 
     for (vent = table;
-         vent->version != 0 && version_cmp(s, version, vent->version) <= 0;
+#ifndef OPENSSL_NO_TLCP
+         ((version == SSL3_VERSION) && (vent->version == TLCP_VERSION)) ||
+#endif
+         (vent->version != 0 && version_cmp(s, version, vent->version) <= 0);
          ++vent) {
         if (vent->cmeth != NULL
                 && version_cmp(s, version, vent->version) == 0
@@ -1675,8 +1822,11 @@ int ssl_set_version_bound(int method_version, int version, int *bound)
         *bound = version;
         return 1;
     }
-
+#ifndef OPENSSL_NO_TLCP
+    valid_tls = version >= TLCP_VERSION && version <= TLS_MAX_VERSION;
+#else
     valid_tls = version >= SSL3_VERSION && version <= TLS_MAX_VERSION;
+#endif
     valid_dtls =
         DTLS_VERSION_LE(version, DTLS_MAX_VERSION) &&
         DTLS_VERSION_GE(version, DTLS1_BAD_VER);
@@ -1868,6 +2018,9 @@ int ssl_choose_server_version(SSL *s, CLIENTHELLO_MSG *hello, DOWNGRADE *dgrd)
         const SSL_METHOD *method;
 
         if (vent->smeth == NULL ||
+#ifndef OPENSSL_NO_TLCP
+            ((client_version != TLCP_VERSION) && (vent->version == TLCP_VERSION)) ||
+#endif
             version_cmp(s, client_version, vent->version) < 0)
             continue;
         method = vent->smeth();
@@ -2097,6 +2250,11 @@ int ssl_get_min_max_version(const SSL *s, int *min_version, int *max_version,
          * A table entry with a NULL client method is still a hole in the
          * "version capability" vector.
          */
+#ifndef OPENSSL_NO_TLCP
+        if (vent->version == TLCP_VERSION) {
+            continue;
+        }
+#endif
         if (vent->cmeth == NULL) {
             hole = 1;
             tmp_real_max = 0;
@@ -2120,7 +2278,23 @@ int ssl_get_min_max_version(const SSL *s, int *min_version, int *max_version,
             hole = 0;
         }
     }
-
+#ifndef OPENSSL_NO_TLCP
+    if (version == 0 && s->method->version == TLS_ANY_VERSION) {
+        /* 
+         * enable tlcp condition (when only sslv3 version, dont choose tlcp):
+         * 1. version is TLS_ANY_VERSION, and all tls/ssl protocol disabled
+         * 2. max version > sslv3 or max version == tlcp_version
+         * 3. s->options not set SSL_OP_NO_TLCP
+         */
+        if ((s->max_proto_version > SSL3_VERSION 
+                || s->max_proto_version == TLCP_VERSION
+                || s->max_proto_version == 0)
+                && (s->options & SSL_OP_NO_TLCP) == 0) {
+            *min_version = *max_version = TLCP_VERSION;
+            return 0;
+        }
+    }
+#endif
     *max_version = version;
 
     /* Fail if everything is disabled */

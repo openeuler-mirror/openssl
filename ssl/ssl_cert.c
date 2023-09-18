@@ -944,18 +944,31 @@ static int ssl_security_default_callback(const SSL *s, const SSL_CTX *ctx,
             /* Level 3: forward secure ciphersuites only */
             pfs_mask = SSL_kDHE | SSL_kECDHE | SSL_kDHEPSK | SSL_kECDHEPSK;
             if (level >= 3 && c->min_tls != TLS1_3_VERSION &&
-                               !(c->algorithm_mkey & pfs_mask))
+#ifndef OPENSSL_NO_TLCP
+                !(c->algorithm_mkey & (pfs_mask | SSL_kSM2DHE)))
+#else
+                !(c->algorithm_mkey & pfs_mask))
+#endif
                 return 0;
             break;
         }
     case SSL_SECOP_VERSION:
         if (!SSL_IS_DTLS(s)) {
+#ifndef OPENSSL_NO_TLCP
+            /* SSLv3 not allowed at level 2 */
+            if (nid <= SSL3_VERSION && nid != TLCP_VERSION && level >= 2)
+                return 0;
+            /* TLS v1.1 and above only for level 3 */
+            if (nid <= TLS1_VERSION && nid != TLCP_VERSION && level >= 3)
+                return 0;
+#else
             /* SSLv3 not allowed at level 2 */
             if (nid <= SSL3_VERSION && level >= 2)
                 return 0;
             /* TLS v1.1 and above only for level 3 */
             if (nid <= TLS1_VERSION && level >= 3)
                 return 0;
+#endif
             /* TLS v1.2 only for level 4 and above */
             if (nid <= TLS1_1_VERSION && level >= 4)
                 return 0;
@@ -1010,6 +1023,11 @@ const SSL_CERT_LOOKUP *ssl_cert_lookup_by_pkey(const EVP_PKEY *pk, size_t *pidx)
 {
     int nid = EVP_PKEY_id(pk);
     size_t tmpidx;
+#ifndef OPENSSL_NO_TLCP
+    if (EVP_PKEY_is_sm2((EVP_PKEY *)pk)) {
+        nid = NID_sm2;
+    }
+#endif
 
     if (nid == NID_undef)
         return NULL;

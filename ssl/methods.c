@@ -110,6 +110,25 @@ IMPLEMENT_ssl3_meth_func(sslv3_client_method,
                          ssl_undefined_function, ossl_statem_connect)
 #endif
 /*-
+ * TLCP methods
+ */
+#ifndef OPENSSL_NO_TLCP
+IMPLEMENT_tls_meth_func(TLCP_VERSION, 0, SSL_OP_NO_TLCP,
+                        tlcp_method,
+                        ossl_statem_accept,
+                        ossl_statem_connect, TLCP_enc_data)
+
+IMPLEMENT_tls_meth_func(TLCP_VERSION, 0, SSL_OP_NO_TLCP,
+                        tlcp_server_method,
+                        ossl_statem_accept,
+                        ssl_undefined_function, TLCP_enc_data)
+
+IMPLEMENT_tls_meth_func(TLCP_VERSION, 0, SSL_OP_NO_TLCP,
+                        tlcp_client_method,
+                        ssl_undefined_function,
+                        ossl_statem_connect, TLCP_enc_data)
+#endif
+/*-
  * DTLS methods
  */
 #ifndef OPENSSL_NO_DTLS1_METHOD
@@ -204,6 +223,23 @@ const SSL_METHOD *TLSv1_1_server_method(void)
 const SSL_METHOD *TLSv1_1_client_method(void)
 {
     return tlsv1_1_client_method();
+}
+# endif
+
+# ifndef OPENSSL_NO_TLCP
+const SSL_METHOD *TLCP_method(void)
+{
+    return tlcp_method();
+}
+
+const SSL_METHOD *TLCP_server_method(void)
+{
+    return tlcp_server_method();
+}
+
+const SSL_METHOD *TLCP_client_method(void)
+{
+    return tlcp_client_method();
 }
 # endif
 

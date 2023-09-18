@@ -1056,7 +1056,11 @@ static int final_ec_pt_formats(SSL *s, unsigned int context, int sent)
             && s->ext.ecpointformats_len > 0
             && s->ext.peer_ecpointformats != NULL
             && s->ext.peer_ecpointformats_len > 0
-            && ((alg_k & SSL_kECDHE) || (alg_a & SSL_aECDSA))) {
+            && ((alg_k & SSL_kECDHE) || (alg_a & SSL_aECDSA)
+#ifndef OPENSSL_NO_TLCP
+            || (alg_k & SSL_kSM2DHE) || (alg_a & SSL_aSM2)
+#endif
+            )) {
         /* we are using an ECC cipher */
         size_t i;
         unsigned char *list = s->ext.peer_ecpointformats;

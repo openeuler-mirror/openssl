@@ -15,6 +15,8 @@
 #include "ssl_local.h"
 #include <openssl/md5.h>
 #include <openssl/dh.h>
+#include "include/crypto/sm2.h"
+#include <openssl/sm2.h>
 #include <openssl/rand.h>
 #include "internal/cryptlib.h"
 
@@ -2667,6 +2669,43 @@ static SSL_CIPHER ssl3_ciphers[] = {
      },
 #endif                          /* OPENSSL_NO_GOST */
 
+#ifndef OPENSSL_NO_TLCP
+    {
+     1,
+     TLCP_TXT_ECDHE_SM2_WITH_SM4_CBC_SM3,
+     NULL,
+     TLCP_CK_ECDHE_SM2_WITH_SM4_CBC_SM3,
+     SSL_kSM2DHE,
+     SSL_aSM2,
+     SSL_SM4CBC,
+     SSL_SM3,
+     TLCP_VERSION,
+     TLS1_2_VERSION,
+     0, 0,
+     SSL_HIGH,
+     SSL_HANDSHAKE_MAC_SM3 | TLS1_PRF_SM3,
+     128,
+     128,
+    },
+    {
+     1,
+     TLCP_TXT_ECC_SM2_WITH_SM4_CBC_SM3,
+     NULL,
+     TLCP_CK_ECC_SM2_WITH_SM4_CBC_SM3,
+     SSL_kSM2ECC,
+     SSL_aSM2,
+     SSL_SM4CBC,
+     SSL_SM3,
+     TLCP_VERSION,
+     TLS1_2_VERSION,
+     0, 0,
+     SSL_HIGH,
+     SSL_HANDSHAKE_MAC_SM3 | TLS1_PRF_SM3,
+     128,
+     128,
+    },
+#endif                          /* OPENSSL_NO_TLCP */
+
 #ifndef OPENSSL_NO_IDEA
     {
      1,
@@ -4325,6 +4364,20 @@ const SSL_CIPHER *ssl3_choose_cipher(SSL *s, STACK_OF(SSL_CIPHER) *clnt,
                     ret = tmp;
                 continue;
             }
+#ifndef OPENSSL_NO_TLCP
+            /* Prefer ECC-SM4-CBC-SM3 while enabling TLCP */
+            if (!(s->options & SSL_OP_NO_TLCP)) {
+                const SSL_CIPHER *tmp = sk_SSL_CIPHER_value(allow, ii);
+
+                if (tmp->id == TLCP_CK_ECC_SM2_WITH_SM4_CBC_SM3) {
+                    ret = tmp;
+                    break;
+                }
+                if (ret == NULL)
+                    ret = tmp;
+                continue;
+            }
+#endif
             ret = sk_SSL_CIPHER_value(allow, ii);
             break;
         }
@@ -4865,6 +4918,79 @@ EVP_PKEY *ssl_dh_to_pkey(DH *dh)
         EVP_PKEY_free(ret);
         return NULL;
     }
+    return ret;
+}
+#endif
+
+#ifndef OPENSSL_NO_TLCP
+int tlcp_derive(SSL *s, EVP_PKEY *privkey, EVP_PKEY *pubkey)
+{
+    unsigned char *pms;
+    int pmslen = SSL_MAX_MASTER_KEY_LENGTH;
+    EC_KEY *tmp_peer_pub_key, *tmp_self_priv_key;
+    EC_KEY *self_priv_key, *peer_pub_key;
+    X509 *peer_enc_cert;
+    int ret;
+
+    if ((tmp_self_priv_key = EVP_PKEY_get0_EC_KEY(privkey)) == NULL
+            || (tmp_peer_pub_key = EVP_PKEY_get0_EC_KEY(pubkey)) == NULL) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_DERIVE,
+                 ERR_R_INTERNAL_ERROR);
+        return 0;
+    }
+
+    if (s->cert->pkeys[SSL_PKEY_SM2_ENC].privatekey == NULL) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_DERIVE,
+                 ERR_R_INTERNAL_ERROR);
+        return 0;
+    }
+
+    if ((self_priv_key = EVP_PKEY_get0_EC_KEY(s->cert->pkeys[SSL_PKEY_SM2_ENC].privatekey)) == NULL) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_DERIVE,
+                 ERR_R_EC_LIB);
+        return 0;
+    }
+
+    peer_enc_cert = ssl_get_sm2_enc_cert(s, s->session->peer_chain);
+    if (peer_enc_cert == NULL) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_DERIVE,
+                 ERR_R_INTERNAL_ERROR);
+        return 0;
+    }
+
+    if ((peer_pub_key = EVP_PKEY_get0_EC_KEY(X509_get0_pubkey(peer_enc_cert))) == NULL) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_DERIVE,
+                 ERR_R_INTERNAL_ERROR);
+        return 0;
+    }
+
+    pms = OPENSSL_malloc(pmslen);
+    if (pms == NULL) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_DERIVE,
+                 ERR_R_MALLOC_FAILURE);
+        return 0;
+    }
+
+    if (SM2_compute_key(pms, pmslen, s->server, 
+                         SM2_DEFAULT_USERID, SM2_DEFAULT_USERID_LEN, 
+                         SM2_DEFAULT_USERID, SM2_DEFAULT_USERID_LEN, 
+                         tmp_peer_pub_key, tmp_self_priv_key, 
+                         peer_pub_key, self_priv_key,
+                         EVP_sm3()) != pmslen) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_DERIVE,
+                 ERR_R_INTERNAL_ERROR);
+        OPENSSL_free(pms);
+        return 0;
+    }
+
+    if (s->server) {
+        ret = ssl_generate_master_secret(s, pms, (size_t)pmslen, 1);
+    } else {
+        s->s3->tmp.pms = pms;
+        s->s3->tmp.pmslen = pmslen;
+        ret = 1;
+    }
+
     return ret;
 }
 #endif

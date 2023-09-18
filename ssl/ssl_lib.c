@@ -560,8 +560,14 @@ static int ssl_check_allowed_versions(int min_version, int max_version)
 #ifdef OPENSSL_NO_TLS1_3
             || (min_version <= TLS1_3_VERSION && TLS1_3_VERSION <= max_version)
 #endif
-            )
+            ) {
+#ifndef OPENSSL_NO_TLCP
+            if (min_version == TLCP_VERSION || max_version == TLCP_VERSION) {
+                return 1;
+            }
+#endif
             return 0;
+        }
     }
     return 1;
 }
@@ -3372,6 +3378,9 @@ void ssl_set_masks(SSL *s)
 #ifndef OPENSSL_NO_EC
     int have_ecc_cert, ecdsa_ok;
 #endif
+#ifndef OPENSSL_NO_TLCP
+    int tlcp_sm2_sign, tlcp_sm2_enc;
+#endif
     if (c == NULL)
         return;
 
@@ -3387,12 +3396,21 @@ void ssl_set_masks(SSL *s)
 #ifndef OPENSSL_NO_EC
     have_ecc_cert = pvalid[SSL_PKEY_ECC] & CERT_PKEY_VALID;
 #endif
+#ifndef OPENSSL_NO_TLCP
+    tlcp_sm2_sign = ssl_has_cert(s, SSL_PKEY_SM2_SIGN);
+    tlcp_sm2_enc = ssl_has_cert(s, SSL_PKEY_SM2_ENC);
+#endif
     mask_k = 0;
     mask_a = 0;
 
 #ifdef CIPHER_DEBUG
+#ifndef OPENSSL_NO_TLCP
+    fprintf(stderr, "dht=%d re=%d rs=%d ds=%d tss=%d tse=%d\n",
+            dh_tmp, rsa_enc, rsa_sign, dsa_sign, tlcp_sm2_sign, tlcp_sm2_enc);
+#else
     fprintf(stderr, "dht=%d re=%d rs=%d ds=%d\n",
             dh_tmp, rsa_enc, rsa_sign, dsa_sign);
+#endif
 #endif
 
 #ifndef OPENSSL_NO_GOST
@@ -3461,6 +3479,14 @@ void ssl_set_masks(SSL *s)
 
 #ifndef OPENSSL_NO_EC
     mask_k |= SSL_kECDHE;
+#endif
+
+#ifndef OPENSSL_NO_TLCP
+    if (tlcp_sm2_sign)
+        mask_a |= SSL_aSM2;
+
+    if (tlcp_sm2_enc)
+        mask_k |= SSL_kSM2ECC | SSL_kSM2DHE;
 #endif
 
 #ifndef OPENSSL_NO_PSK
@@ -3792,6 +3818,11 @@ const char *ssl_protocol_to_string(int version)
 
     case TLS1_VERSION:
         return "TLSv1";
+
+#ifndef OPENSSL_NO_TLCP
+    case TLCP_VERSION:
+        return "TLCP";
+#endif
 
     case SSL3_VERSION:
         return "SSLv3";
@@ -5707,3 +5738,51 @@ void SSL_set_allow_early_data_cb(SSL *s,
     s->allow_early_data_cb = cb;
     s->allow_early_data_cb_data = arg;
 }
+
+#ifndef OPENSSL_NO_TLCP
+int ssl_is_sm2_cert(X509 *x)
+{
+    return x && EVP_PKEY_is_sm2(X509_get0_pubkey(x));
+}
+
+int ssl_is_sm2_sign_usage(X509 *x)
+{
+    return x && (X509_get_extension_flags(x) & EXFLAG_KUSAGE) &&
+        (X509_get_key_usage(x) & X509v3_KU_SM2_SIGN);
+}
+
+int ssl_is_sm2_enc_usage(X509 *x)
+{
+    return x && (X509_get_extension_flags(x) & EXFLAG_KUSAGE) &&
+        ((X509_get_key_usage(x) & X509v3_KU_SM2_ENC_ENCIPHERMENT) ||
+         ((X509_get_key_usage(x) & X509v3_KU_SM2_ENC_CIPHER_ONLY) &&
+         (X509_get_key_usage(x) & X509v3_KU_KEY_AGREEMENT))
+        );
+}
+
+X509 *ssl_get_sm2_enc_cert(SSL *s, STACK_OF(X509) *chain)
+{
+    X509 *x;
+    int i;
+
+    for (i = sk_X509_num(chain) - 1; i >= 0 ; --i) {
+        x = sk_X509_value(chain, i);
+        if (ssl_is_sm2_cert(x) && ssl_is_sm2_enc_usage(x)) {
+            return x;
+        }
+    }
+    return NULL;
+}
+
+int ssl_get_sm2_cert_id(X509 *x, size_t *id)
+{
+    if (ssl_is_sm2_sign_usage(x) && !ssl_is_sm2_enc_usage(x)) {
+        *id = SSL_PKEY_SM2_SIGN;
+        return 1;
+    } else if (!ssl_is_sm2_sign_usage(x) && ssl_is_sm2_enc_usage(x)) {
+        *id = SSL_PKEY_SM2_ENC;
+        return 1;
+    }
+    return 0;
+}
+#endif

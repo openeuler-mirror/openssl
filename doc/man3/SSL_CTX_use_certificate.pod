@@ -12,7 +12,12 @@ SSL_CTX_use_RSAPrivateKey_ASN1, SSL_CTX_use_RSAPrivateKey_file,
 SSL_use_PrivateKey_file, SSL_use_PrivateKey_ASN1, SSL_use_PrivateKey,
 SSL_use_RSAPrivateKey, SSL_use_RSAPrivateKey_ASN1,
 SSL_use_RSAPrivateKey_file, SSL_CTX_check_private_key, SSL_check_private_key,
-SSL_CTX_use_cert_and_key, SSL_use_cert_and_key
+SSL_CTX_use_cert_and_key, SSL_use_cert_and_key,
+SSL_CTX_use_gm_certificate, SSL_CTX_use_gm_certificate_ASN1, SSL_CTX_use_gm_certificate_file,
+SSL_use_gm_certificate, SSL_use_gm_certificate_ASN1, SSL_use_gm_certificate_file,
+SSL_CTX_use_gm_PrivateKey, SSL_CTX_use_gm_PrivateKey_ASN1, SSL_CTX_use_gm_PrivateKey_file,
+SSL_use_gm_PrivateKey, SSL_use_gm_PrivateKey_ASN1, SSL_use_gm_PrivateKey_file,
+SSL_CTX_use_gm_cert_and_key, SSL_use_gm_cert_and_key
 - load certificate and key data
 
 =head1 SYNOPSIS
@@ -25,6 +30,13 @@ SSL_CTX_use_cert_and_key, SSL_use_cert_and_key
  int SSL_use_certificate(SSL *ssl, X509 *x);
  int SSL_use_certificate_ASN1(SSL *ssl, unsigned char *d, int len);
  int SSL_use_certificate_file(SSL *ssl, const char *file, int type);
+
+ int SSL_CTX_use_gm_certificate(SSL_CTX *ctx, X509 *x, int usage);
+ int SSL_CTX_use_gm_certificate_ASN1(SSL_CTX *ctx, int len, unsigned char *d, int usage);
+ int SSL_CTX_use_gm_certificate_file(SSL_CTX *ctx, const char *file, int type, int usage);
+ int SSL_use_gm_certificate(SSL *ssl, X509 *x, int usage);
+ int SSL_use_gm_certificate_ASN1(SSL *ssl, unsigned char *d, int len, int usage);
+ int SSL_use_gm_certificate_file(SSL *ssl, const char *file, int type, int usage);
 
  int SSL_CTX_use_certificate_chain_file(SSL_CTX *ctx, const char *file);
  int SSL_use_certificate_chain_file(SSL *ssl, const char *file);
@@ -43,11 +55,22 @@ SSL_CTX_use_cert_and_key, SSL_use_cert_and_key
  int SSL_use_RSAPrivateKey_ASN1(SSL *ssl, unsigned char *d, long len);
  int SSL_use_RSAPrivateKey_file(SSL *ssl, const char *file, int type);
 
+ int SSL_CTX_use_gm_PrivateKey(SSL_CTX *ctx, EVP_PKEY *pkey, int usage);
+ int SSL_CTX_use_gm_PrivateKey_ASN1(int pk, SSL_CTX *ctx, unsigned char *d,
+                                 long len, int usage);
+ int SSL_CTX_use_gm_PrivateKey_file(SSL_CTX *ctx, const char *file, int type, int usage);
+ int SSL_use_gm_PrivateKey(SSL *ssl, EVP_PKEY *pkey, int usage);
+ int SSL_use_gm_PrivateKey_ASN1(int pk, SSL *ssl, unsigned char *d, long len, int usage);
+ int SSL_use_gm_PrivateKey_file(SSL *ssl, const char *file, int type, int usage);
+
  int SSL_CTX_check_private_key(const SSL_CTX *ctx);
  int SSL_check_private_key(const SSL *ssl);
 
  int SSL_CTX_use_cert_and_key(SSL_CTX *ctx, X509 *x, EVP_PKEY *pkey, STACK_OF(X509) *chain, int override);
  int SSL_use_cert_and_key(SSL *ssl, X509 *x, EVP_PKEY *pkey, STACK_OF(X509) *chain, int override);
+
+ int SSL_CTX_use_gm_cert_and_key(SSL_CTX *ctx, X509 *x, EVP_PKEY *pkey, STACK_OF(X509) *chain, int override, int usage);
+ int SSL_use_gm_cert_and_key(SSL *ssl, X509 *x, EVP_PKEY *pkey, STACK_OF(X509) *chain, int override, int usage);
 
 =head1 DESCRIPTION
 
@@ -80,6 +103,21 @@ from the known types SSL_FILETYPE_PEM, SSL_FILETYPE_ASN1.
 SSL_use_certificate_file() loads the certificate from B<file> into B<ssl>.
 See the NOTES section on why SSL_CTX_use_certificate_chain_file()
 should be preferred.
+
+SSL_CTX_use_gm_certificate() loads the certificate B<x> into B<ctx>
+and specify B<usage>. SSL_use_gm_certificate() loads B<x> into B<ssl>
+and specify B<usage>. The B<usage> should be SSL_USAGE_SIG or SSL_USAGE_ENC.
+
+SSL_CTX_use_gm_certificate_ASN1() loads the ASN1 encoded certificate from
+the memory location B<d> (with length B<len>) into B<ctx> and specify B<usage>,
+SSL_use_gm_certificate_ASN1() loads the ASN1 encoded certificate into B<ssl>
+and specify B<usage>.
+
+SSL_CTX_use_gm_certificate_file() loads the first certificate stored in B<file>
+into B<ctx> and specify B<usage>. The formatting B<type> of the certificate must
+be specified from the known types SSL_FILETYPE_PEM, SSL_FILETYPE_ASN1.
+SSL_use_gm_certificate_file() loads the certificate from B<file> into B<ssl>
+and specify B<usage>.
 
 SSL_CTX_use_certificate_chain_file() loads a certificate chain from
 B<file> into B<ctx>. The certificates must be in PEM format and must
@@ -126,6 +164,22 @@ SSL_CTX_use_RSAPrivateKey_file() adds the first private RSA key found in
 B<file> to B<ctx>. SSL_use_PrivateKey_file() adds the first private key found
 in B<file> to B<ssl>; SSL_use_RSAPrivateKey_file() adds the first private
 RSA key found to B<ssl>.
+
+SSL_CTX_use_gm_PrivateKey() adds B<pkey> as private key to B<ctx> and
+specify B<usage>. SSL_CTX_use_gm_PrivateKey_ASN1() adds the private key of
+type B<pk> stored at memory location B<d> (length B<len>) to B<ctx> and
+specify B<usage>. SSL_CTX_use_gm_PrivateKey_file() adds the first private
+key found in B<file> to B<ctx>. The formatting B<type> of the private key 
+must be specified from the known types SSL_FILETYPE_PEM, SSL_FILETYPE_ASN1.
+
+SSL_use_PrivateKey() adds B<pkey> as private key to B<ssl> and sprcify B<usage>.
+SSL_use_gm_PrivateKey_ASN1() adds the private key to B<ssl> and sprcify B<usage>.
+SSL_use_gm_PrivateKey_file() adds the first private key found in B<file> to B<ssl>
+and sprcify B<usage>.
+
+SSL_CTX_use_gm_cert_and_key() and SSL_use_gm_cert_and_key() assign the X.509
+certificate B<x>, private key B<key>, and certificate B<chain> onto the
+corresponding B<ssl> or B<ctx> and specify B<usage>.
 
 SSL_CTX_check_private_key() checks the consistency of a private key with
 the corresponding certificate loaded into B<ctx>. If more than one

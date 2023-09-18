@@ -93,6 +93,25 @@ SSL3_ENC_METHOD const TLSv1_3_enc_data = {
     ssl3_handshake_write
 };
 
+#ifndef OPENSSL_NO_TLCP
+SSL3_ENC_METHOD const TLCP_enc_data = {
+    tls1_enc,
+    tls1_mac,
+    tls1_setup_key_block,
+    tls1_generate_master_secret,
+    tls1_change_cipher_state,
+    tls1_final_finish_mac,
+    TLS_MD_CLIENT_FINISH_CONST, TLS_MD_CLIENT_FINISH_CONST_SIZE,
+    TLS_MD_SERVER_FINISH_CONST, TLS_MD_SERVER_FINISH_CONST_SIZE,
+    tlcp_alert_code,
+    tls1_export_keying_material,
+    SSL_ENC_FLAG_EXPLICIT_IV,
+    ssl3_set_handshake_header,
+    tls_close_construct_packet,
+    ssl3_handshake_write
+};
+#endif
+
 long tls1_default_timeout(void)
 {
     /*
@@ -169,6 +188,9 @@ static const TLS_GROUP_INFO nid_list[] = {
     {NID_brainpoolP512r1, 256, TLS_CURVE_PRIME}, /* brainpool512r1 (28) */
     {EVP_PKEY_X25519, 128, TLS_CURVE_CUSTOM}, /* X25519 (29) */
     {EVP_PKEY_X448, 224, TLS_CURVE_CUSTOM}, /* X448 (30) */
+#ifndef OPENSSL_NO_TLCP
+    [40] = {EVP_PKEY_SM2, 128, TLS_CURVE_PRIME} /* sm2 (41) */
+#endif
 };
 
 static const unsigned char ecformats_default[] = {
@@ -184,6 +206,9 @@ static const uint16_t eccurves_default[] = {
     30,                      /* X448 (30) */
     25,                      /* secp521r1 (25) */
     24,                      /* secp384r1 (24) */
+#ifndef OPENSSL_NO_TLCP
+    41,                      /* sm2 (41) */
+#endif
 };
 
 static const uint16_t suiteb_curves[] = {
@@ -258,6 +283,12 @@ int tls_curve_allowed(SSL *s, uint16_t curve, int op)
     if (cinfo->flags & TLS_CURVE_CHAR2)
         return 0;
 # endif
+#ifndef OPENSSL_NO_TLCP
+    // SM2 is only allowed in TLCP
+    if (s->version != TLCP_VERSION && cinfo->nid == NID_sm2) {
+        return 0;
+    }
+#endif
     ctmp[0] = curve >> 8;
     ctmp[1] = curve & 0xff;
     return ssl_security(s, op, cinfo->secbits, cinfo->nid, (void *)ctmp);
@@ -545,6 +576,10 @@ void tls1_get_formatlist(SSL *s, const unsigned char **pformats,
         /* For Suite B we don't support char2 fields */
         if (tls1_suiteb(s))
             *num_formats = sizeof(ecformats_default) - 1;
+#ifndef OPENSSL_NO_TLCP
+        else if (SSL_IS_TLCP(s))    // TLCP version only support uncompressed
+            *num_formats = sizeof(ecformats_default) - 2;
+#endif
         else
             *num_formats = sizeof(ecformats_default);
     }
@@ -637,6 +672,9 @@ static int tls1_check_cert_param(SSL *s, X509 *x, int set_ee_md)
 /* Default sigalg schemes */
 static const uint16_t tls12_sigalgs[] = {
 #ifndef OPENSSL_NO_EC
+#ifndef OPENSSL_NO_TLCP
+    TLSEXT_SIGALG_sm2dsa_sm3,
+#endif
     TLSEXT_SIGALG_ecdsa_secp256r1_sha256,
     TLSEXT_SIGALG_ecdsa_secp384r1_sha384,
     TLSEXT_SIGALG_ecdsa_secp521r1_sha512,
@@ -685,6 +723,11 @@ static const uint16_t suiteb_sigalgs[] = {
 
 static const SIGALG_LOOKUP sigalg_lookup_tbl[] = {
 #ifndef OPENSSL_NO_EC
+#ifndef OPENSSL_NO_TLCP
+    {"sm2dsa_sm3", TLSEXT_SIGALG_sm2dsa_sm3,
+     NID_sm3, SSL_MD_SM3_IDX, EVP_PKEY_SM2, SSL_PKEY_SM2_SIGN,
+     NID_SM2_with_SM3, NID_sm2},
+#endif
     {"ecdsa_secp256r1_sha256", TLSEXT_SIGALG_ecdsa_secp256r1_sha256,
      NID_sha256, SSL_MD_SHA256_IDX, EVP_PKEY_EC, SSL_PKEY_ECC,
      NID_ecdsa_with_SHA256, NID_X9_62_prime256v1},
@@ -794,6 +837,10 @@ static const uint16_t tls_default_sigalg[] = {
     TLSEXT_SIGALG_gostr34102012_512_gostr34112012_512, /* SSL_PKEY_GOST12_512 */
     0, /* SSL_PKEY_ED25519 */
     0, /* SSL_PKEY_ED448 */
+#ifndef OPENSSL_NO_TLCP
+    TLSEXT_SIGALG_sm2dsa_sm3, /* SSL_PKEY_SM2_SIGN */
+    0, /* SSL_PKEY_SM2_ENC */
+#endif
 };
 
 /* Lookup TLS signature algorithm */
@@ -981,7 +1028,7 @@ int tls_check_sigalg_curve(const SSL *s, int curve)
 
         if (lu == NULL)
             continue;
-        if (lu->sig == EVP_PKEY_EC
+        if ((lu->sig == EVP_PKEY_EC || lu->sig == EVP_PKEY_SM2)
                 && lu->curve != NID_undef
                 && curve == lu->curve)
             return 1;
@@ -1053,6 +1100,9 @@ int tls12_check_peer_sigalg(SSL *s, uint16_t sig, EVP_PKEY *pkey)
     if (lu == NULL
         || (SSL_IS_TLS13(s) && (lu->hash == NID_sha1 || lu->hash == NID_sha224))
         || (pkeyid != lu->sig
+#ifndef OPENSSL_NO_TCLP
+        && (lu->sig != EVP_PKEY_SM2)
+#endif
         && (lu->sig != EVP_PKEY_RSA_PSS || pkeyid != EVP_PKEY_RSA))) {
         SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_F_TLS12_CHECK_PEER_SIGALG,
                  SSL_R_WRONG_SIGNATURE_TYPE);
@@ -1198,6 +1248,13 @@ int ssl_set_client_disabled(SSL *s)
         s->s3->tmp.mask_k |= SSL_kSRP;
     }
 #endif
+#ifndef OPENSSL_NO_TLCP
+    /* TLCP ciphersuites will be disabled while using other protocols */
+    if (s->version != TLCP_VERSION) {
+        s->s3->tmp.mask_a |= SSL_aSM2;
+        s->s3->tmp.mask_k |= SSL_kSM2ECC | SSL_kSM2DHE;
+    }
+#endif
     return 1;
 }
 
@@ -1317,7 +1374,11 @@ SSL_TICKET_STATUS tls_get_ticket_from_client(SSL *s, CLIENTHELLO_MSG *hello,
      * (e.g. TLSv1.3) behave as if no ticket present to permit stateful
      * resumption.
      */
+#ifndef OPENSSL_NO_TLCP
+    if ((s->version <= SSL3_VERSION && s->version != TLCP_VERSION) || !tls_use_ticket(s))
+#else
     if (s->version <= SSL3_VERSION || !tls_use_ticket(s))
+#endif
         return SSL_TICKET_NONE;
 
     ticketext = &hello->pre_proc_exts[TLSEXT_IDX_session_ticket];
@@ -1594,6 +1655,13 @@ static int tls12_sigalg_allowed(const SSL *s, int op, const SIGALG_LOOKUP *lu)
 {
     unsigned char sigalgstr[2];
     int secbits;
+
+#ifndef OPENSSL_NO_TLCP
+    // SM2 is only allowed in TLCP
+    if (s->version != TLCP_VERSION && lu != NULL && lu->sig == EVP_PKEY_SM2) {
+        return 0;
+    }
+#endif
 
     /* See if sigalgs is recognised and if hash is enabled */
     if (!tls1_lookup_md(lu, NULL))
@@ -2426,6 +2494,10 @@ void tls1_set_cert_validity(SSL *s)
     tls1_check_chain(s, NULL, NULL, NULL, SSL_PKEY_GOST12_512);
     tls1_check_chain(s, NULL, NULL, NULL, SSL_PKEY_ED25519);
     tls1_check_chain(s, NULL, NULL, NULL, SSL_PKEY_ED448);
+#ifndef OPENSSL_NO_TLCP
+    tls1_check_chain(s, NULL, NULL, NULL, SSL_PKEY_SM2_ENC);
+    tls1_check_chain(s, NULL, NULL, NULL, SSL_PKEY_SM2_SIGN);
+#endif
 }
 
 /* User level utility function to check a chain is suitable */
@@ -2732,6 +2804,57 @@ static const SIGALG_LOOKUP *find_sig_alg(SSL *s, X509 *x, EVP_PKEY *pkey)
     return lu;
 }
 
+#ifndef OPENSSL_NO_TLCP
+static int tlcp_choose_sigalg(SSL *s, int fatalerrs)
+{
+    int sig_idx;
+    const SIGALG_LOOKUP *lu = NULL;
+
+    // sever must used sm2dsa cert for signature
+    if (s->server) {
+        s->cert->key = &(s->cert->pkeys[SSL_PKEY_SM2_SIGN]);
+    }
+
+    sig_idx = s->cert->key - s->cert->pkeys;
+
+    // check cert is existed
+    if (!ssl_has_cert(s, sig_idx)) {
+        if (!fatalerrs)
+            return 1;
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_CHOOSE_SIGALG,
+                         ERR_R_INTERNAL_ERROR);
+        return 0;
+    }
+
+    // only support sm2dsa cert now
+    switch(sig_idx) {
+        case SSL_PKEY_ECC:
+            if (!EVP_PKEY_is_sm2(s->cert->key->privatekey))
+                break;
+            lu = tls1_lookup_sigalg(TLSEXT_SIGALG_sm2dsa_sm3);
+            break;
+        case SSL_PKEY_SM2_SIGN:
+            lu = tls1_lookup_sigalg(TLSEXT_SIGALG_sm2dsa_sm3);
+            break;
+        default:
+            lu = NULL;
+    }
+
+    if (lu == NULL) {
+        if (!fatalerrs)
+            return 1;
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_CHOOSE_SIGALG,
+                         ERR_R_INTERNAL_ERROR);
+        return 0;
+    }
+
+    s->s3->tmp.cert = &s->cert->pkeys[sig_idx];
+    s->cert->key = s->s3->tmp.cert;
+    s->s3->tmp.sigalg = lu;
+    return 1;
+}
+#endif
+
 /*
  * Choose an appropriate signature algorithm based on available certificates
  * Sets chosen certificate and signature algorithm.
@@ -2751,6 +2874,12 @@ int tls_choose_sigalg(SSL *s, int fatalerrs)
     s->s3->tmp.cert = NULL;
     s->s3->tmp.sigalg = NULL;
 
+#ifndef OPENSSL_NO_TLCP
+    if (SSL_IS_TLCP(s)) {
+        return tlcp_choose_sigalg(s, fatalerrs);
+    }
+#endif
+
     if (SSL_IS_TLS13(s)) {
         lu = find_sig_alg(s, NULL, NULL);
         if (lu == NULL) {
@@ -2764,6 +2893,7 @@ int tls_choose_sigalg(SSL *s, int fatalerrs)
         /* If ciphersuite doesn't require a cert nothing to do */
         if (!(s->s3->tmp.new_cipher->algorithm_auth & SSL_aCERT))
             return 1;
+
         if (!s->server && !ssl_has_cert(s, s->cert->key - s->cert->pkeys))
                 return 1;
 

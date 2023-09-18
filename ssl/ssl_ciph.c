@@ -43,7 +43,12 @@
 #define SSL_ENC_CHACHA_IDX      19
 #define SSL_ENC_ARIA128GCM_IDX  20
 #define SSL_ENC_ARIA256GCM_IDX  21
+#ifndef OPENSSL_NO_TLCP
+#define SSL_ENC_SM4CBC_IDX      22
+#define SSL_ENC_NUM_IDX         23
+#else
 #define SSL_ENC_NUM_IDX         22
+#endif
 
 /* NB: make sure indices in these tables match values above */
 
@@ -76,6 +81,9 @@ static const ssl_cipher_table ssl_cipher_table_cipher[SSL_ENC_NUM_IDX] = {
     {SSL_CHACHA20POLY1305, NID_chacha20_poly1305}, /* SSL_ENC_CHACHA_IDX 19 */
     {SSL_ARIA128GCM, NID_aria_128_gcm}, /* SSL_ENC_ARIA128GCM_IDX 20 */
     {SSL_ARIA256GCM, NID_aria_256_gcm}, /* SSL_ENC_ARIA256GCM_IDX 21 */
+#ifndef OPENSSL_NO_TLCP
+    {SSL_SM4CBC, NID_sm4_cbc},          /* SSL_ENC_SM4CBC_IDX 22*/
+#endif
 };
 
 static const EVP_CIPHER *ssl_cipher_methods[SSL_ENC_NUM_IDX];
@@ -110,11 +118,17 @@ static const ssl_cipher_table ssl_cipher_table_mac[SSL_MD_NUM_IDX] = {
     {SSL_GOST12_512, NID_id_GostR3411_2012_512}, /* SSL_MD_GOST12_512_IDX 8 */
     {0, NID_md5_sha1},          /* SSL_MD_MD5_SHA1_IDX 9 */
     {0, NID_sha224},            /* SSL_MD_SHA224_IDX 10 */
-    {0, NID_sha512}             /* SSL_MD_SHA512_IDX 11 */
+    {0, NID_sha512},             /* SSL_MD_SHA512_IDX 11 */
+#ifndef OPENSSL_NO_TLCP
+    {SSL_SM3, NID_sm3}          /* SSL_MD_SM3_IDX 12 */
+#endif
 };
 
 static const EVP_MD *ssl_digest_methods[SSL_MD_NUM_IDX] = {
-    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+#ifndef OPENSSL_NO_TLCP
+    NULL
+#endif
 };
 
 /* *INDENT-OFF* */
@@ -172,7 +186,10 @@ static int ssl_mac_pkey_id[SSL_MD_NUM_IDX] = {
     /* GOST2012_512 */
     EVP_PKEY_HMAC,
     /* MD5/SHA1, SHA224, SHA512 */
-    NID_undef, NID_undef, NID_undef
+    NID_undef, NID_undef, NID_undef,
+#ifndef OPENSSL_NO_TLCP
+    EVP_PKEY_HMAC
+#endif
 };
 
 static size_t ssl_mac_secret_size[SSL_MD_NUM_IDX];
@@ -1688,6 +1705,14 @@ char *SSL_CIPHER_description(const SSL_CIPHER *cipher, char *buf, int len)
     case SSL_kANY:
         kx = "any";
         break;
+#ifndef OPENSSL_NO_TLCP
+    case SSL_kSM2ECC:
+        kx = "SM2ECC";
+        break;
+    case SSL_kSM2DHE:
+        kx = "SM2DHE";
+        break;
+#endif
     default:
         kx = "unknown";
     }
@@ -1721,6 +1746,11 @@ char *SSL_CIPHER_description(const SSL_CIPHER *cipher, char *buf, int len)
     case SSL_aANY:
         au = "any";
         break;
+#ifndef OPENSSL_NO_TLCP
+    case SSL_aSM2:
+        au = "SM2";
+        break;
+#endif
     default:
         au = "unknown";
         break;
@@ -1791,6 +1821,11 @@ char *SSL_CIPHER_description(const SSL_CIPHER *cipher, char *buf, int len)
     case SSL_CHACHA20POLY1305:
         enc = "CHACHA20/POLY1305(256)";
         break;
+#ifndef OPENSSL_NO_TLCP
+    case SSL_SM4CBC:
+        enc = "SM4CBC";
+        break;
+#endif
     default:
         enc = "unknown";
         break;
@@ -1823,6 +1858,11 @@ char *SSL_CIPHER_description(const SSL_CIPHER *cipher, char *buf, int len)
     case SSL_GOST12_512:
         mac = "GOST2012";
         break;
+#ifndef OPENSSL_NO_TLCP
+    case SSL_SM3:
+        mac = "SM3";
+        break;
+#endif
     default:
         mac = "unknown";
         break;

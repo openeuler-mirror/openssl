@@ -7,6 +7,7 @@
  * https://www.openssl.org/source/license.html
  */
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,6 +18,7 @@
 #include <openssl/crypto.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
+#include <openssl/sm2.h>
 #include "testutil.h"
 
 #ifndef OPENSSL_NO_SM2
@@ -404,6 +406,114 @@ static int sm2_sig_test(void)
     return testresult;
 }
 
+static EC_KEY* create_EC_key(EC_GROUP *group, const char *prv_hex, const char *x_hex, const char *y_hex)
+{
+    BIGNUM *prv = NULL;
+    BIGNUM *x = NULL;
+    BIGNUM *y = NULL;
+    EC_KEY *key = NULL;
+
+    if (!TEST_true(BN_hex2bn(&prv, prv_hex))
+            || !TEST_true(BN_hex2bn(&x, x_hex))
+            || !TEST_true(BN_hex2bn(&y, y_hex)))
+        goto err;
+    
+    if (!TEST_ptr(key = EC_KEY_new())
+            || !TEST_true(EC_KEY_set_group(key, group))
+            || !TEST_true(EC_KEY_set_private_key(key, prv))
+            || !TEST_true(EC_KEY_set_public_key_affine_coordinates(key, x, y))) {
+        EC_KEY_free(key);
+        key = NULL;
+    }
+        
+err:
+    BN_free(prv);
+    BN_free(x);
+    BN_free(y);
+
+    return key;
+}
+
+static int sm2_key_exchange_test(void)
+{
+    const char *userA = "ALICE123@YAHOO.COM";
+    const char *userB = "BILL456@YAHOO.COM";
+    const char *privA_hex = "6FCBA2EF9AE0AB902BC3BDE3FF915D44BA4CC78F88E2F8E7F8996D3B8CCEEDEE";
+    const char *pubA_x_hex = "3099093BF3C137D8FCBBCDF4A2AE50F3B0F216C3122D79425FE03A45DBFE1655";
+    const char *pubA_y_hex = "3DF79E8DAC1CF0ECBAA2F2B49D51A4B387F2EFAF482339086A27A8E05BAED98B";
+    const char *privB_hex = "5E35D7D3F3C54DBAC72E61819E730B019A84208CA3A35E4C2E353DFCCB2A3B53";
+    const char *pubB_x_hex = "245493D446C38D8CC0F118374690E7DF633A8A4BFB3329B5ECE604B2B4F37F43";
+    const char *pubB_y_hex = "53C0869F4B9E17773DE68FEC45E14904E0DEA45BF6CECF9918C85EA047C60A4C";
+    const char *ra = "83A2C9C8B96E5AF70BD480B472409A9A327257F1EBB73F5B073354B248668563";
+    const char *x1 = "6CB5633816F4DD560B1DEC458310CBCC6856C09505324A6D23150C408F162BF0";
+    const char *y1 = "0D6FCF62F1036C0A1B6DACCF57399223A65F7D7BF2D9637E5BBBEB857961BF1A";
+    const char *rb = "33FE21940342161C55619C4A0C060293D543C80AF19748CE176D83477DE71C80";
+    const char *x2 = "1799B2A2C778295300D9A2325C686129B8F2B5337B3DCF4514E8BBC19D900EE5";
+    const char *y2 = "54C9288C82733EFDF7808AE7F27D0E732F7C73A7D9AC98B7D8740A91D0DB3CF4";
+
+    EC_KEY *keyA = NULL;
+    EC_KEY *keyB = NULL;
+    EC_KEY *keyRa = NULL;
+    EC_KEY *keyRb = NULL;
+
+    unsigned char Ka[16];
+    unsigned char Kb[16];
+    unsigned char K[] = {0x55, 0xB0, 0xAC, 0x62, 0xA6, 0xB9, 0x27, 0xBA, 0x23, 0x70, 0x38, 0x32, 0xC8, 0x53, 0xDE, 0xD4};
+
+    int ret = 0;
+
+    EC_GROUP *test_group =
+        create_EC_group
+        ("8542D69E4C044F18E8B92435BF6FF7DE457283915C45517D722EDB8B08F1DFC3",
+         "787968B4FA32C3FD2417842E73BBFEFF2F3C848B6831D7E0EC65228B3937E498",
+         "63E4C6D3B23B0C849CF84241484BFE48F61D59A5B16BA06E6E12D1DA27C5249A",
+         "421DEBD61B62EAB6746434EBC3CC315E32220B3BADD50BDC4C4E6C147FEDD43D",
+         "0680512BCBB42C07D47349D2153B70C4E5D7FDFCBFA36EA1A85841B9E46E09A2",
+         "8542D69E4C044F18E8B92435BF6FF7DD297720630485628D5AE74EE7C32E79B7",
+         "1");
+
+    if (!TEST_ptr(keyA = create_EC_key(test_group, privA_hex, pubA_x_hex, pubA_y_hex))
+            || !TEST_ptr(keyB = create_EC_key(test_group, privB_hex, pubB_x_hex, pubB_y_hex)))
+        goto done;
+
+    if (!TEST_ptr(keyRa = create_EC_key(test_group, ra, x1, y1))
+            || !TEST_ptr(keyRb = create_EC_key(test_group, rb, x2, y2)))
+        goto done;
+
+    ret = SM2_compute_key(Ka, sizeof(Ka), 1, 
+        userB, strlen(userB), userA, strlen(userA),
+        keyRb, keyRa,
+        keyB, keyA, 
+        EVP_sm3());
+    if (!TEST_int_eq(ret, sizeof(Ka))) {
+        ret = 0;
+        goto done;
+    }
+
+    ret = SM2_compute_key(Kb, sizeof(Kb), 0, 
+        userA, strlen(userA), userB, strlen(userB),
+        keyRa, keyRb,
+        keyA, keyB,
+        EVP_sm3());
+    if (!TEST_int_eq(ret, sizeof(Kb))) {
+        ret = 0;
+        goto done;
+    }
+    
+    if (!TEST_mem_eq(Ka, sizeof(Ka), K, sizeof(K))
+            || !TEST_mem_eq(Kb, sizeof(Kb), K, sizeof(K)))
+        ret = 0;
+
+done:
+    EC_KEY_free(keyA);
+    EC_KEY_free(keyB);
+    EC_KEY_free(keyRa);
+    EC_KEY_free(keyRb);
+    EC_GROUP_free(test_group);
+
+    return ret;
+}
+
 #endif
 
 int setup_tests(void)
@@ -413,6 +523,7 @@ int setup_tests(void)
 #else
     ADD_TEST(sm2_crypt_test);
     ADD_TEST(sm2_sig_test);
+    ADD_TEST(sm2_key_exchange_test);
 #endif
     return 1;
 }

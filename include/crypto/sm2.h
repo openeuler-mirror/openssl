@@ -16,9 +16,11 @@
 # ifndef OPENSSL_NO_SM2
 
 #  include <openssl/ec.h>
+#  include <openssl/sm2.h>
 
 /* The default user id as specified in GM/T 0009-2012 */
 #  define SM2_DEFAULT_USERID "1234567812345678"
+#  define SM2_DEFAULT_USERID_LEN 16
 
 int sm2_compute_z_digest(uint8_t *out,
                          const EVP_MD *digest,

@@ -339,6 +339,9 @@
 
  Changes between 1.1.1l and 1.1.1m [14 Dec 2021]
 
+  *) Support SM2 signing and verification schemes with X509 certificate.
+     [Paul Yang]
+
   *) Avoid loading of a dynamic engine twice.
 
      [Bernd Edlinger]

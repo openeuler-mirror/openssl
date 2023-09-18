@@ -434,6 +434,9 @@ static int test_cipher_name(void)
         if ((id == 0xFF85) || (id == 0xFF87))
             /* skip GOST2012-GOST8912-GOST891 and GOST2012-NULL-GOST12 */
             continue;
+        if ((id == 0xE011) || (id == 0xE013))
+            /* skip ECDHE_SM2_WITH_SM4_CBC_SM3 and ECC_SM2_WITH_SM4_CBC_SM3 */
+            continue;
         p = SSL_CIPHER_standard_name(c);
         q = get_std_name_by_id(id);
         if (!TEST_ptr(p)) {

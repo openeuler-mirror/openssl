@@ -61,6 +61,10 @@ static int key_exchange_expected(SSL *s)
 {
     long alg_k = s->s3->tmp.new_cipher->algorithm_mkey;
 
+#ifndef OPENSSL_NO_TLCP
+    if (SSL_IS_TLCP(s))
+        return 1;
+#endif
     /*
      * Can't skip server key exchange if this is an ephemeral
      * ciphersuite or for SRP
@@ -2257,8 +2261,277 @@ static int tls_process_ske_ecdhe(SSL *s, PACKET *pkt, EVP_PKEY **pkey)
 #endif
 }
 
+#ifndef OPENSSL_NO_TLCP
+static int tlcp_process_ske_sm2ecc(SSL *s, PACKET *pkt)
+{
+    EVP_MD_CTX *md_ctx = NULL;
+    EVP_PKEY_CTX *pctx = NULL;
+    unsigned char *encbuf = NULL;
+    unsigned char *tbs = NULL;
+    
+    PACKET signature;
+    X509 *peer_sign_cert;
+    X509 *peer_enc_cert;
+    EVP_PKEY *peer_sign_pkey;
+    const EVP_MD *md;
+    unsigned char *tmp;
+    int rv, ebuflen, tbslen;
+
+    rv = 0;
+    peer_sign_cert = s->session->peer;
+    peer_enc_cert = ssl_get_sm2_enc_cert(s, s->session->peer_chain);
+    if (peer_sign_cert == NULL || peer_enc_cert == NULL
+        || !ssl_is_sm2_cert(peer_sign_cert)
+        || !ssl_is_sm2_sign_usage(peer_sign_cert)) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_PROCESS_SKE_SM2ECC, ERR_R_INTERNAL_ERROR);
+        goto err;
+    }
+
+    peer_sign_pkey = X509_get0_pubkey(peer_sign_cert);
+    if (!EVP_PKEY_set_alias_type(peer_sign_pkey, EVP_PKEY_SM2)) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_PROCESS_SKE_SM2ECC,
+                    ERR_R_INTERNAL_ERROR);
+        goto err;
+    }
+    /* Get the signature algorithm according to the peer sign key */
+    if (SSL_USE_SIGALGS(s)) {
+        unsigned int sigalg;
+
+        if (!PACKET_get_net_2(pkt, &sigalg)) {
+            SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_F_TLCP_PROCESS_SKE_SM2ECC,
+                        SSL_R_LENGTH_TOO_SHORT);
+            goto err;
+        }
+        if (tls12_check_peer_sigalg(s, sigalg, peer_sign_pkey) <=0) {
+            /* SSLfatal() already called */
+            goto err;
+        }
+    } else if (!tls1_set_peer_legacy_sigalg(s, peer_sign_pkey)) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_PROCESS_SKE_SM2ECC,
+                    ERR_R_INTERNAL_ERROR);
+        goto err;
+    }
+    if (!tls1_lookup_md(s->s3->tmp.peer_sigalg, &md)
+        || EVP_PKEY_size(peer_sign_pkey) < 0) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_PROCESS_SKE_SM2ECC,
+                    ERR_R_INTERNAL_ERROR);
+        goto err;
+    }
+
+    if (!PACKET_get_length_prefixed_2(pkt, &signature)
+        || PACKET_remaining(pkt) != 0
+        || PACKET_remaining(&signature) > (size_t)EVP_PKEY_size(peer_sign_pkey)) {
+        SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_F_TLCP_PROCESS_SKE_SM2ECC,
+                    SSL_R_LENGTH_MISMATCH);
+        goto err;
+    }
+
+    ebuflen = i2d_X509(peer_enc_cert, NULL);
+    if (ebuflen < 0) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_PROCESS_SKE_SM2ECC,
+                 ERR_R_BUF_LIB);
+        goto err;
+    }
+
+    md_ctx = EVP_MD_CTX_new();
+    encbuf = OPENSSL_malloc(ebuflen + 3);
+    if (md_ctx == NULL || encbuf == NULL) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_PROCESS_SKE_SM2ECC,
+                 ERR_R_MALLOC_FAILURE);
+        goto err;
+    }
+    /* Encode the DER encoding of an X509 structure, reserve 3 bytes for length */
+    tmp = encbuf;
+    l2n3(ebuflen, tmp);
+    ebuflen = i2d_X509(peer_enc_cert, &tmp);
+    if (ebuflen < 0) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_PROCESS_SKE_SM2ECC,
+                 ERR_R_BUF_LIB);
+        goto err;
+    }
+    ebuflen += 3;
+
+    if (EVP_DigestVerifyInit(md_ctx, &pctx, md, NULL, peer_sign_pkey) <= 0) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_PROCESS_SKE_SM2ECC,
+                    ERR_R_EVP_LIB);
+        goto err;
+    }
+
+    tbslen = construct_key_exchange_tbs(s, &tbs, encbuf, ebuflen);
+    if (tbslen == 0) {
+        goto err;
+    }
+
+    rv = EVP_DigestVerify(md_ctx, PACKET_data(&signature),
+                            PACKET_remaining(&signature), tbs, tbslen);
+    if (rv <= 0) {
+        SSLfatal(s, SSL_AD_DECRYPT_ERROR, SSL_F_TLCP_PROCESS_SKE_SM2ECC,
+                    SSL_R_BAD_SIGNATURE);
+    }
+err:
+    OPENSSL_free(encbuf);
+    OPENSSL_free(tbs);
+    EVP_MD_CTX_free(md_ctx);
+    return rv;
+}
+
+static int tlcp_process_ske_sm2dhe(SSL *s, PACKET *pkt)
+{
+    unsigned char *ecparams;
+    int ecparams_len;
+    PACKET pt_encoded;
+    PACKET signature;
+    EVP_PKEY *pkey;
+    EVP_PKEY_CTX *pctx;
+    EVP_PKEY_CTX *verify_ctx;
+    EVP_MD_CTX *md_ctx = NULL;
+    char *id = "1234567812345678";
+    int ret = 0;
+    int max_sig_len;
+
+    if(!PACKET_get_bytes(pkt, (const unsigned char**)&ecparams, 3)
+            || !PACKET_get_length_prefixed_1(pkt, &pt_encoded)
+            || !PACKET_get_length_prefixed_2(pkt, &signature)
+    ) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_PROCESS_SKE_SM2DHE, SSL_R_LENGTH_TOO_SHORT);
+        return 0;
+    }
+
+    if (PACKET_remaining(pkt) != 0) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_PROCESS_SKE_SM2DHE, SSL_R_LENGTH_TOO_LONG);
+        return 0;
+    }
+
+    // generate tmp pkey s->s3->peer_tmp with peer pub key
+    if ((pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL)) == NULL) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_PROCESS_SKE_SM2DHE, ERR_R_MALLOC_FAILURE);
+        return 0;
+    }
+
+    if (EVP_PKEY_paramgen_init(pctx) <= 0 
+            || EVP_PKEY_CTX_set_ec_paramgen_curve_nid(pctx, NID_sm2) <= 0
+            || EVP_PKEY_paramgen(pctx, &s->s3->peer_tmp) <= 0) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_PROCESS_SKE_SM2DHE, ERR_R_EVP_LIB);
+        goto end;
+    }
+
+    if (s->s3->peer_tmp == NULL) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_PROCESS_SKE_SM2DHE, ERR_R_INTERNAL_ERROR);
+        goto end;
+    }
+
+    if (!EVP_PKEY_set1_tls_encodedpoint(s->s3->peer_tmp, 
+            PACKET_data(&pt_encoded), PACKET_remaining(&pt_encoded))) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_PROCESS_SKE_SM2DHE, SSL_R_BAD_ECPOINT);
+        goto end;
+    }
+
+    // verify the msg using peer sign cert's pubkey
+    if ((pkey = X509_get0_pubkey(s->session->peer)) == NULL) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_PROCESS_SKE_SM2DHE, ERR_R_INTERNAL_ERROR);
+        goto end;
+    }
+
+    max_sig_len = EVP_PKEY_size(pkey);
+    if (PACKET_remaining(&signature) > (size_t)max_sig_len) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_PROCESS_SKE_SM2DHE, SSL_R_LENGTH_TOO_LONG);
+        goto end;
+    }
+
+    if (!EVP_PKEY_set_alias_type(pkey, EVP_PKEY_SM2)) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_PROCESS_SKE_SM2DHE, ERR_R_EVP_LIB);
+        goto end;
+    }
+
+    if ((md_ctx = EVP_MD_CTX_new()) == NULL) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_PROCESS_SKE_SM2DHE, ERR_R_MALLOC_FAILURE);
+        goto end;
+    }
+
+    if (EVP_DigestVerifyInit(md_ctx, &verify_ctx, EVP_sm3(), NULL, pkey) <= 0) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_PROCESS_SKE_SM2DHE, ERR_R_EVP_LIB);
+        goto end;
+    }
+
+    if (EVP_PKEY_CTX_set1_id(verify_ctx, id, strlen(id)) <= 0) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_PROCESS_SKE_SM2DHE, ERR_R_EVP_LIB);
+        goto end;
+    }
+
+    ecparams_len = PACKET_data(&pt_encoded) + PACKET_remaining(&pt_encoded) - ecparams;
+    if (EVP_DigestVerifyUpdate(md_ctx, s->s3->client_random, SSL3_RANDOM_SIZE) <= 0
+            || EVP_DigestVerifyUpdate(md_ctx, s->s3->server_random, SSL3_RANDOM_SIZE) <= 0
+            || EVP_DigestVerifyUpdate(md_ctx, ecparams, ecparams_len) <= 0) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_PROCESS_SKE_SM2DHE, ERR_R_EVP_LIB);
+        goto end;
+    }
+
+    if (EVP_DigestVerifyFinal(md_ctx, 
+            PACKET_data(&signature), PACKET_remaining(&signature)) <= 0) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_PROCESS_SKE_SM2DHE, SSL_R_BAD_SIGNATURE);
+        goto end;
+    }
+
+    ret = 1;
+
+end:
+    EVP_PKEY_CTX_free(pctx);
+    EVP_MD_CTX_free(md_ctx);
+
+    return ret;
+}
+
+static MSG_PROCESS_RETURN tlcp_process_key_exchange(SSL *s, PACKET *pkt)
+{
+    unsigned long alg_k;
+
+    alg_k = s->s3->tmp.new_cipher->algorithm_mkey;
+
+    if (alg_k & SSL_kSM2ECC) {
+        if (!tlcp_process_ske_sm2ecc(s, pkt)) {
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_PROCESS_KEY_EXCHANGE, ERR_R_INTERNAL_ERROR);
+            goto err;
+        }
+    } else if (alg_k & SSL_kSM2DHE) {
+        if (!tlcp_process_ske_sm2dhe(s, pkt)) {
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_PROCESS_KEY_EXCHANGE, ERR_R_INTERNAL_ERROR);
+            goto err;
+        }
+    } else {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_PROCESS_KEY_EXCHANGE, ERR_R_INTERNAL_ERROR);
+        goto err;
+    }
+
+    return MSG_PROCESS_CONTINUE_READING;
+err:
+    return MSG_PROCESS_ERROR;
+}
+#endif
+
 MSG_PROCESS_RETURN tls_process_key_exchange(SSL *s, PACKET *pkt)
 {
+#ifndef OPENSSL_NO_TLCP
+    if (SSL_IS_TLCP(s))
+        return tlcp_process_key_exchange(s, pkt);
+#endif
     long alg_k;
     EVP_PKEY *pkey = NULL;
     EVP_MD_CTX *md_ctx = NULL;
@@ -3320,8 +3593,169 @@ static int tls_construct_cke_srp(SSL *s, WPACKET *pkt)
 #endif
 }
 
+#ifndef OPENSSL_NO_TLCP
+static int tlcp_construct_cke_sm2ecc(SSL *s, WPACKET *pkt)
+{
+    unsigned char *encdata = NULL;
+    EVP_PKEY_CTX *pctx = NULL;
+    unsigned char *pms = NULL;
+    size_t pmslen = 0;
+
+    X509 *peer_enc_cert;
+    EVP_PKEY *peer_enc_pkey;
+    size_t enclen;
+
+    peer_enc_cert = ssl_get_sm2_enc_cert(s, s->session->peer_chain);
+    peer_enc_pkey = X509_get0_pubkey(peer_enc_cert);
+    if (peer_enc_cert == NULL || peer_enc_pkey == NULL
+        || !EVP_PKEY_set_alias_type(peer_enc_pkey, EVP_PKEY_SM2)) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_CONSTRUCT_CKE_SM2ECC, ERR_R_INTERNAL_ERROR);
+        goto err;
+    }
+
+    pmslen = SSL_MAX_MASTER_KEY_LENGTH;
+    pms = OPENSSL_malloc(pmslen);
+    if (pms == NULL) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_CONSTRUCT_CKE_SM2ECC,
+                 ERR_R_MALLOC_FAILURE);
+        goto err;
+    }
+
+    pms[0] = s->client_version >> 8;
+    pms[1] = s->client_version & 0xff;
+    if (RAND_bytes(pms + 2, (int)(pmslen - 2)) <= 0) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_CONSTRUCT_CKE_SM2ECC,
+                 ERR_R_INTERNAL_ERROR);
+        goto err;
+    }
+
+    if (!WPACKET_start_sub_packet_u16(pkt)) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_CONSTRUCT_CKE_SM2ECC,
+                 ERR_R_INTERNAL_ERROR);
+        goto err;
+    }
+    /* Encrypt premaster secret { client_version, random[46] }*/
+    pctx = EVP_PKEY_CTX_new(peer_enc_pkey, NULL);
+    if (pctx == NULL || EVP_PKEY_encrypt_init(pctx) <= 0
+        || EVP_PKEY_encrypt(pctx, NULL, &enclen, pms, pmslen) <= 0) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_CONSTRUCT_CKE_SM2ECC,
+                 ERR_R_EVP_LIB);
+        goto err;
+    }
+    if (!WPACKET_reserve_bytes(pkt, enclen, &encdata)
+            || EVP_PKEY_encrypt(pctx, encdata, &enclen, pms, pmslen) <= 0) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_CONSTRUCT_CKE_SM2ECC,
+                 ERR_R_EVP_LIB);
+        goto err;
+    }
+    pkt->written += enclen;
+    pkt->curr += enclen;
+    EVP_PKEY_CTX_free(pctx);
+    pctx = NULL;
+
+    if (!WPACKET_close(pkt)) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLCP_CONSTRUCT_CKE_SM2ECC,
+                 ERR_R_INTERNAL_ERROR);
+        goto err;
+    }
+
+    s->s3->tmp.pms = pms;
+    s->s3->tmp.pmslen = pmslen;
+
+    return 1;
+err:
+    OPENSSL_clear_free(pms, pmslen);
+    EVP_PKEY_CTX_free(pctx);
+    return 0;
+}
+
+static int tlcp_construct_cke_sm2dhe(SSL *s, WPACKET *pkt)
+{
+    EVP_PKEY *skey, *ckey;
+    unsigned char * pt_encoded = NULL;
+    int pt_encoded_len;
+    int ret = 0;
+
+    if ((skey = s->s3->peer_tmp) == NULL) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_CONSTRUCT_CKE_SM2DHE, ERR_R_INTERNAL_ERROR);
+        return 0;
+    }
+
+    if (!WPACKET_put_bytes_u8(pkt, NAMED_CURVE_TYPE)
+            || !WPACKET_put_bytes_u8(pkt, 0)
+            || !WPACKET_put_bytes_u8(pkt, 41)) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_CONSTRUCT_CKE_SM2DHE, ERR_R_INTERNAL_ERROR);
+        return 0;
+    }
+
+    if ((ckey = ssl_generate_pkey(skey)) == NULL) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_CONSTRUCT_CKE_SM2DHE, ERR_R_INTERNAL_ERROR);
+        return 0;
+    }
+
+    if ((pt_encoded_len = EVP_PKEY_get1_tls_encodedpoint(ckey, &pt_encoded)) <= 0) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_CONSTRUCT_CKE_SM2DHE, ERR_R_EC_LIB);
+        goto end;
+    }
+
+    if (!WPACKET_sub_memcpy_u8(pkt, pt_encoded, pt_encoded_len)) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_CONSTRUCT_CKE_SM2DHE, ERR_R_INTERNAL_ERROR);
+        goto end;
+    }
+
+    if (!tlcp_derive(s, ckey, skey)) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_CONSTRUCT_CKE_SM2DHE, ERR_R_INTERNAL_ERROR);
+        goto end;
+    }
+
+    ret = 1;
+
+end:
+    EVP_PKEY_free(ckey);
+    if (pt_encoded) {
+        OPENSSL_free(pt_encoded);
+    }
+
+    return ret;
+}
+
+static int tlcp_construct_client_key_exchange(SSL *s, WPACKET *pkt)
+{
+    unsigned long alg_k;
+
+    alg_k = s->s3->tmp.new_cipher->algorithm_mkey;
+
+    if (alg_k & SSL_kSM2ECC) {
+        if (!tlcp_construct_cke_sm2ecc(s, pkt))
+            goto err;
+    } else if (alg_k & SSL_kSM2DHE) {
+        if (!tlcp_construct_cke_sm2dhe(s, pkt))
+            goto err;
+    } else {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                 SSL_F_TLCP_CONSTRUCT_CLIENT_KEY_EXCHANGE, ERR_R_INTERNAL_ERROR);
+        goto err;
+    }
+
+    return 1;
+err:
+    return 0;
+}
+#endif
+
 int tls_construct_client_key_exchange(SSL *s, WPACKET *pkt)
 {
+#ifndef OPENSSL_NO_TLCP
+    if (SSL_IS_TLCP(s))
+        return tlcp_construct_client_key_exchange(s, pkt);
+#endif
     unsigned long alg_k;
 
     alg_k = s->s3->tmp.new_cipher->algorithm_mkey;

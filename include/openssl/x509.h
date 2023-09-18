@@ -55,6 +55,10 @@ extern "C" {
 # define X509v3_KU_ENCIPHER_ONLY         0x0001
 # define X509v3_KU_DECIPHER_ONLY         0x8000
 # define X509v3_KU_UNDEF                 0xffff
+/* For TLCP sm2 certificates */
+# define X509v3_KU_SM2_SIGN (X509v3_KU_DIGITAL_SIGNATURE | X509v3_KU_NON_REPUDIATION)
+# define X509v3_KU_SM2_ENC_ENCIPHERMENT (X509v3_KU_KEY_ENCIPHERMENT | X509v3_KU_DATA_ENCIPHERMENT)
+# define X509v3_KU_SM2_ENC_CIPHER_ONLY (X509v3_KU_ENCIPHER_ONLY | X509v3_KU_DECIPHER_ONLY)
 
 struct X509_algor_st {
     ASN1_OBJECT *algorithm;
@@ -572,6 +576,13 @@ int X509_get_signature_info(X509 *x, int *mdnid, int *pknid, int *secbits,
 void X509_get0_signature(const ASN1_BIT_STRING **psig,
                          const X509_ALGOR **palg, const X509 *x);
 int X509_get_signature_nid(const X509 *x);
+
+# ifndef OPENSSL_NO_SM2
+void X509_set0_sm2_id(X509 *x, ASN1_OCTET_STRING *sm2_id);
+ASN1_OCTET_STRING *X509_get0_sm2_id(X509 *x);
+void X509_REQ_set0_sm2_id(X509_REQ *x, ASN1_OCTET_STRING *sm2_id);
+ASN1_OCTET_STRING *X509_REQ_get0_sm2_id(X509_REQ *x);
+# endif
 
 int X509_trusted(const X509 *x);
 int X509_alias_set1(X509 *x, const unsigned char *name, int len);

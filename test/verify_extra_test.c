@@ -8,6 +8,7 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 #include <openssl/crypto.h>
 #include <openssl/bio.h>
 #include <openssl/x509.h>
@@ -24,6 +25,7 @@ static char *good_f = NULL;
 static char *sroot_cert = NULL;
 static char *ca_cert = NULL;
 static char *ee_cert = NULL;
+static char *req_f = NULL;
 
 static X509 *load_cert_pem(const char *file)
 {
@@ -304,6 +306,88 @@ static int test_purpose_any(void)
     return do_test_purpose(X509_PURPOSE_ANY, 1);
 }
 
+#ifndef OPENSSL_NO_SM2
+static int test_sm2_id(void)
+{
+    /* we only need an X509 structure, no matter if it's a real SM2 cert */
+    X509 *x = NULL;
+    BIO *bio = NULL;
+    int ret = 0;
+    ASN1_OCTET_STRING *v = NULL, *v2 = NULL;
+    char *sm2id = "this is an ID";
+
+    bio = BIO_new_file(bad_f, "r");
+    if (bio == NULL)
+        goto err;
+
+    x = PEM_read_bio_X509(bio, NULL, 0, NULL);
+    if (x == NULL)
+        goto err;
+
+    v = ASN1_OCTET_STRING_new();
+    if (v == NULL)
+        goto err;
+
+    if (!ASN1_OCTET_STRING_set(v, (unsigned char *)sm2id, (int)strlen(sm2id))) {
+        ASN1_OCTET_STRING_free(v);
+        goto err;
+    }
+
+    X509_set0_sm2_id(x, v);
+
+    v2 = X509_get0_sm2_id(x);
+    if (!TEST_ptr(v2)
+            || !TEST_int_eq(ASN1_OCTET_STRING_cmp(v, v2), 0))
+        goto err;
+
+    ret = 1;
+ err:
+    X509_free(x);
+    BIO_free(bio);
+    return ret;
+}
+
+static int test_req_sm2_id(void)
+{
+    /* we only need an X509_REQ structure, no matter if it's a real SM2 cert */
+    X509_REQ *x = NULL;
+    BIO *bio = NULL;
+    int ret = 0;
+    ASN1_OCTET_STRING *v = NULL, *v2 = NULL;
+    char *sm2id = "this is an ID";
+
+    bio = BIO_new_file(req_f, "r");
+    if (bio == NULL)
+        goto err;
+
+    x = PEM_read_bio_X509_REQ(bio, NULL, 0, NULL);
+    if (x == NULL)
+        goto err;
+
+    v = ASN1_OCTET_STRING_new();
+    if (v == NULL)
+        goto err;
+
+    if (!ASN1_OCTET_STRING_set(v, (unsigned char *)sm2id, (int)strlen(sm2id))) {
+        ASN1_OCTET_STRING_free(v);
+        goto err;
+    }
+
+    X509_REQ_set0_sm2_id(x, v);
+
+    v2 = X509_REQ_get0_sm2_id(x);
+    if (!TEST_ptr(v2)
+            || !TEST_int_eq(ASN1_OCTET_STRING_cmp(v, v2), 0))
+        goto err;
+
+    ret = 1;
+ err:
+    X509_REQ_free(x);
+    BIO_free(bio);
+    return ret;
+}
+#endif
+
 int setup_tests(void)
 {
     if (!TEST_ptr(certs_dir = test_get_argument(0))) {
@@ -315,6 +399,7 @@ int setup_tests(void)
             || !TEST_ptr(untrusted_f = test_mk_file_path(certs_dir, "untrusted.pem"))
             || !TEST_ptr(bad_f = test_mk_file_path(certs_dir, "bad.pem"))
             || !TEST_ptr(good_f = test_mk_file_path(certs_dir, "rootCA.pem"))
+            || !TEST_ptr(req_f = test_mk_file_path(certs_dir, "sm2-csr.pem"))
             || !TEST_ptr(sroot_cert = test_mk_file_path(certs_dir, "sroot-cert.pem"))
             || !TEST_ptr(ca_cert = test_mk_file_path(certs_dir, "ca-cert.pem"))
             || !TEST_ptr(ee_cert = test_mk_file_path(certs_dir, "ee-cert.pem")))
@@ -324,6 +409,10 @@ int setup_tests(void)
     ADD_TEST(test_store_ctx);
     ADD_TEST(test_self_signed_good);
     ADD_TEST(test_self_signed_bad);
+#ifndef OPENSSL_NO_SM2
+    ADD_TEST(test_sm2_id);
+    ADD_TEST(test_req_sm2_id);
+#endif
     ADD_TEST(test_purpose_ssl_client);
     ADD_TEST(test_purpose_ssl_server);
     ADD_TEST(test_purpose_any);
@@ -339,6 +428,7 @@ void cleanup_tests(void)
     OPENSSL_free(untrusted_f);
     OPENSSL_free(bad_f);
     OPENSSL_free(good_f);
+    OPENSSL_free(req_f);
     OPENSSL_free(sroot_cert);
     OPENSSL_free(ca_cert);
     OPENSSL_free(ee_cert);

@@ -177,6 +177,13 @@
 # define SSL_kECDHEPSK           0x00000080U
 # define SSL_kDHEPSK             0x00000100U
 
+#ifndef OPENSSL_NO_TLCP
+/* TLCP ECC*/
+# define SSL_kSM2ECC             0x00000800U
+/* TLCP ECDHE */
+# define SSL_kSM2DHE           0x00001000U
+#endif
+
 /* all PSK */
 
 # define SSL_PSK     (SSL_kPSK | SSL_kRSAPSK | SSL_kECDHEPSK | SSL_kDHEPSK)
@@ -203,9 +210,21 @@
 # define SSL_aGOST12             0x00000080U
 /* Any appropriate signature auth (for TLS 1.3 ciphersuites) */
 # define SSL_aANY                0x00000000U
+
+#ifndef OPENSSL_NO_TLCP
+/* SM2 auth */
+# define SSL_aSM2                0x00000100U
+#endif
+
+#ifndef OPENSSL_NO_TLCP
+/* All bits requiring a certificate */
+#define SSL_aCERT \
+    (SSL_aRSA | SSL_aDSS | SSL_aECDSA | SSL_aGOST01 | SSL_aGOST12 | SSL_aSM2)
+#else
 /* All bits requiring a certificate */
 #define SSL_aCERT \
     (SSL_aRSA | SSL_aDSS | SSL_aECDSA | SSL_aGOST01 | SSL_aGOST12)
+#endif
 
 /* Bits for algorithm_enc (symmetric encryption) */
 # define SSL_DES                 0x00000001U
@@ -231,6 +250,10 @@
 # define SSL_ARIA128GCM          0x00100000U
 # define SSL_ARIA256GCM          0x00200000U
 
+#ifndef OPENSSL_NO_TLCP
+# define SSL_SM4CBC              0x00800000U
+#endif
+
 # define SSL_AESGCM              (SSL_AES128GCM | SSL_AES256GCM)
 # define SSL_AESCCM              (SSL_AES128CCM | SSL_AES256CCM | SSL_AES128CCM8 | SSL_AES256CCM8)
 # define SSL_AES                 (SSL_AES128|SSL_AES256|SSL_AESGCM|SSL_AESCCM)
@@ -253,6 +276,10 @@
 # define SSL_GOST89MAC12         0x00000100U
 # define SSL_GOST12_512          0x00000200U
 
+#ifndef OPENSSL_NO_TLCP
+# define SSL_SM3                 0x00000400U
+#endif
+
 /*
  * When adding new digest in the ssl_ciph.c and increment SSL_MD_NUM_IDX make
  * sure to update this constant too
@@ -270,8 +297,12 @@
 # define SSL_MD_MD5_SHA1_IDX 9
 # define SSL_MD_SHA224_IDX 10
 # define SSL_MD_SHA512_IDX 11
+#ifndef OPENSSL_NO_TLCP
+# define SSL_MD_SM3_IDX 12
+# define SSL_MAX_DIGEST 13
+#else
 # define SSL_MAX_DIGEST 12
-
+#endif
 /* Bits for algorithm2 (handshake digests and other extra flags) */
 
 /* Bits 0-7 are handshake MAC */
@@ -283,6 +314,9 @@
 # define SSL_HANDSHAKE_MAC_GOST12_256 SSL_MD_GOST12_256_IDX
 # define SSL_HANDSHAKE_MAC_GOST12_512 SSL_MD_GOST12_512_IDX
 # define SSL_HANDSHAKE_MAC_DEFAULT  SSL_HANDSHAKE_MAC_MD5_SHA1
+#ifndef OPENSSL_NO_TLCP
+# define SSL_HANDSHAKE_MAC_SM3      SSL_MD_SM3_IDX
+#endif
 
 /* Bits 8-15 bits are PRF */
 # define TLS1_PRF_DGST_SHIFT 8
@@ -293,6 +327,9 @@
 # define TLS1_PRF_GOST12_256 (SSL_MD_GOST12_256_IDX << TLS1_PRF_DGST_SHIFT)
 # define TLS1_PRF_GOST12_512 (SSL_MD_GOST12_512_IDX << TLS1_PRF_DGST_SHIFT)
 # define TLS1_PRF            (SSL_MD_MD5_SHA1_IDX << TLS1_PRF_DGST_SHIFT)
+#ifndef OPENSSL_NO_TLCP
+# define TLS1_PRF_SM3        (SSL_MD_SM3_IDX << TLS1_PRF_DGST_SHIFT)
+#endif
 
 /*
  * Stream MAC for GOST ciphersuites from cryptopro draft (currently this also
@@ -317,6 +354,8 @@
 
 /* Check if an SSL structure is using DTLS */
 # define SSL_IS_DTLS(s)  (s->method->ssl3_enc->enc_flags & SSL_ENC_FLAG_DTLS)
+
+# define SSL_IS_TLCP(s)  (s->version == TLCP_VERSION)
 
 /* Check if we are using TLSv1.3 */
 # define SSL_IS_TLS13(s) (!SSL_IS_DTLS(s) \
@@ -383,7 +422,13 @@
 # define SSL_PKEY_GOST12_512     6
 # define SSL_PKEY_ED25519        7
 # define SSL_PKEY_ED448          8
+#ifndef OPENSSL_NO_TLCP
+# define SSL_PKEY_SM2_SIGN       9
+# define SSL_PKEY_SM2_ENC        10
+# define SSL_PKEY_NUM            11
+#else
 # define SSL_PKEY_NUM            9
+#endif
 
 /*-
  * SSL_kRSA <- RSA_ENC
@@ -2026,6 +2071,9 @@ typedef enum downgrade_en {
 #define TLSEXT_SIGALG_ecdsa_secp521r1_sha512                    0x0603
 #define TLSEXT_SIGALG_ecdsa_sha224                              0x0303
 #define TLSEXT_SIGALG_ecdsa_sha1                                0x0203
+#ifndef OPENSSL_NO_TLCP
+#define TLSEXT_SIGALG_sm2dsa_sm3                                0x0708
+#endif
 #define TLSEXT_SIGALG_rsa_pss_rsae_sha256                       0x0804
 #define TLSEXT_SIGALG_rsa_pss_rsae_sha384                       0x0805
 #define TLSEXT_SIGALG_rsa_pss_rsae_sha512                       0x0806
@@ -2095,6 +2143,18 @@ __owur const SSL_METHOD *dtls_bad_ver_client_method(void);
 __owur const SSL_METHOD *dtlsv1_2_method(void);
 __owur const SSL_METHOD *dtlsv1_2_server_method(void);
 __owur const SSL_METHOD *dtlsv1_2_client_method(void);
+# ifndef OPENSSL_NO_TLCP
+__owur const SSL_METHOD *tlcp_method(void);
+__owur const SSL_METHOD *tlcp_server_method(void);
+__owur const SSL_METHOD *tlcp_client_method(void);
+
+/* TLCP helper functions */
+__owur int ssl_is_sm2_cert(X509 *x);
+__owur int ssl_is_sm2_sign_usage(X509 *x);
+__owur int ssl_is_sm2_enc_usage(X509 *x);
+__owur X509 *ssl_get_sm2_enc_cert(SSL *s, STACK_OF(X509) *chain);
+__owur int ssl_get_sm2_cert_id(X509 *x, size_t *id);
+# endif
 
 extern const SSL3_ENC_METHOD TLSv1_enc_data;
 extern const SSL3_ENC_METHOD TLSv1_1_enc_data;
@@ -2103,6 +2163,9 @@ extern const SSL3_ENC_METHOD TLSv1_3_enc_data;
 extern const SSL3_ENC_METHOD SSLv3_enc_data;
 extern const SSL3_ENC_METHOD DTLSv1_enc_data;
 extern const SSL3_ENC_METHOD DTLSv1_2_enc_data;
+# ifndef OPENSSL_NO_TLCP
+extern const SSL3_ENC_METHOD TLCP_enc_data;
+# endif
 
 /*
  * Flags for SSL methods
@@ -2331,6 +2394,7 @@ __owur int ssl_generate_master_secret(SSL *s, unsigned char *pms, size_t pmslen,
 __owur EVP_PKEY *ssl_generate_pkey(EVP_PKEY *pm);
 __owur int ssl_derive(SSL *s, EVP_PKEY *privkey, EVP_PKEY *pubkey,
                       int genmaster);
+__owur int tlcp_derive(SSL *s, EVP_PKEY *privkey, EVP_PKEY *pubkey);
 __owur EVP_PKEY *ssl_dh_to_pkey(DH *dh);
 __owur unsigned int ssl_get_max_send_fragment(const SSL *ssl);
 __owur unsigned int ssl_get_split_send_fragment(const SSL *ssl);
@@ -2502,6 +2566,9 @@ __owur int tls13_export_keying_material_early(SSL *s, unsigned char *out,
 __owur int tls1_alert_code(int code);
 __owur int tls13_alert_code(int code);
 __owur int ssl3_alert_code(int code);
+#  ifndef OPENSSL_NO_TLCP
+__owur int tlcp_alert_code(int code);
+#  endif
 
 #  ifndef OPENSSL_NO_EC
 __owur int ssl_check_srvr_ecc_cert_and_alg(X509 *x, SSL *s);

@@ -1084,6 +1084,10 @@ static int sign(X509 *x, EVP_PKEY *pkey, int days, int clrext,
         if (!X509V3_EXT_add_nconf(conf, &ctx, section, x))
             goto err;
     }
+#ifndef OPENSSL_NO_SM2
+    if (EVP_PKEY_is_sm2(pkey) && !EVP_PKEY_set_alias_type(pkey, EVP_PKEY_SM2))
+        goto err;
+#endif
     if (!X509_sign(x, pkey, digest))
         goto err;
     return 1;

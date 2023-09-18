@@ -578,6 +578,7 @@ typedef enum OPTION_choice {
     OPT_SRPUSER, OPT_SRPPASS, OPT_SRP_STRENGTH, OPT_SRP_LATEUSER,
     OPT_SRP_MOREGROUPS,
 #endif
+    OPT_TLCP, OPT_DCERT, OPT_DKEY, OPT_DPASS,
     OPT_SSL3, OPT_SSL_CONFIG,
     OPT_TLS1_3, OPT_TLS1_2, OPT_TLS1_1, OPT_TLS1, OPT_DTLS, OPT_DTLS1,
     OPT_DTLS1_2, OPT_SCTP, OPT_TIMEOUT, OPT_MTU, OPT_KEYFORM, OPT_PASS,
@@ -738,6 +739,12 @@ const OPTIONS s_client_options[] = {
 #ifndef OPENSSL_NO_TLS1_3
     {"tls1_3", OPT_TLS1_3, '-', "Just use TLSv1.3"},
 #endif
+#ifndef OPENSSL_NO_TCLP
+    {"tlcp", OPT_TLCP, '-', "Just use TLCP"},
+    {"dcert", OPT_DCERT, '<', "Encryption certificate file to use (usually for TLCP)"},
+    {"dkey", OPT_DKEY, '<', "Encryption private key file to use (usually for TLCP)"},
+    {"dpass", OPT_DPASS, 's', "Encryption private key file pass phrase source"},
+#endif
 #ifndef OPENSSL_NO_DTLS
     {"dtls", OPT_DTLS, '-', "Use any version of DTLS"},
     {"timeout", OPT_TIMEOUT, '-',
@@ -836,7 +843,7 @@ static const OPT_PAIR services[] = {
 
 #define IS_PROT_FLAG(o) \
  (o == OPT_SSL3 || o == OPT_TLS1 || o == OPT_TLS1_1 || o == OPT_TLS1_2 \
-  || o == OPT_TLS1_3 || o == OPT_DTLS || o == OPT_DTLS1 || o == OPT_DTLS1_2)
+  || o == OPT_TLS1_3 || o == OPT_DTLS || o == OPT_DTLS1 || o == OPT_DTLS1_2 || o == OPT_TLCP)
 
 /* Free |*dest| and optionally set it to a copy of |source|. */
 static void freeandcopy(char **dest, const char *source)
@@ -983,6 +990,10 @@ int s_client_main(int argc, char **argv)
 #ifndef OPENSSL_NO_SCTP
     int sctp_label_bug = 0;
 #endif
+    char *s_dcert_file = NULL, *s_dkey_file = NULL;
+    char *dpassarg = NULL, *dpass = NULL;
+    X509 *s_dcert = NULL;
+    EVP_PKEY *s_dkey = NULL;
 
     FD_ZERO(&readfds);
     FD_ZERO(&writefds);
@@ -1321,6 +1332,14 @@ int s_client_main(int argc, char **argv)
             isdtls = 0;
 #endif
             break;
+        case OPT_TLCP:
+            min_version = TLCP_VERSION;
+            max_version = TLCP_VERSION;
+            socket_type = SOCK_STREAM;
+#ifndef OPENSSL_NO_DTLS
+            isdtls = 0;
+#endif
+            break;
         case OPT_DTLS:
 #ifndef OPENSSL_NO_DTLS
             meth = DTLS_client_method();
@@ -1381,6 +1400,15 @@ int s_client_main(int argc, char **argv)
             break;
         case OPT_KEY:
             key_file = opt_arg();
+            break;
+        case OPT_DCERT:
+            s_dcert_file = opt_arg();
+            break;
+        case OPT_DPASS:
+            dpassarg = opt_arg();
+            break;
+        case OPT_DKEY:
+            s_dkey_file = opt_arg();
             break;
         case OPT_RECONNECT:
             reconnect = 5;
@@ -1660,7 +1688,7 @@ int s_client_main(int argc, char **argv)
         next_proto.data = NULL;
 #endif
 
-    if (!app_passwd(passarg, NULL, &pass, NULL)) {
+    if (!app_passwd(passarg, dpassarg, &pass, &dpass)) {
         BIO_printf(bio_err, "Error getting password\n");
         goto end;
     }
@@ -1689,6 +1717,26 @@ int s_client_main(int argc, char **argv)
         if (!load_certs(chain_file, &chain, FORMAT_PEM, NULL,
                         "client certificate chain"))
             goto end;
+    }
+
+    if (s_dcert_file != NULL) {
+        if (s_dkey_file == NULL)
+            s_dkey_file = s_dcert_file;
+
+        s_dkey = load_key(s_dkey_file, key_format, 0, dpass, e,
+                            "Encrypt certificate private key file");
+        if (s_dkey == NULL) {
+            ERR_print_errors(bio_err);
+            goto end;
+        }
+
+        s_dcert = load_cert(s_dcert_file, key_format,
+                            "Encrypt server certificate file");
+
+        if (s_dcert == NULL) {
+            ERR_print_errors(bio_err);
+            goto end;
+        }
     }
 
     if (crl_file != NULL) {
@@ -1942,6 +1990,11 @@ int s_client_main(int argc, char **argv)
 
     if (!set_cert_key_stuff(ctx, cert, key, chain, build_chain))
         goto end;
+    
+    if (s_dcert != NULL) {
+        if (!set_cert_key_stuff(ctx, s_dcert, s_dkey, chain, build_chain))
+            goto end;
+    }
 
     if (!noservername) {
         tlsextcbp.biodebug = bio_err;
@@ -3156,6 +3209,9 @@ int s_client_main(int argc, char **argv)
     EVP_PKEY_free(key);
     sk_X509_pop_free(chain, X509_free);
     OPENSSL_free(pass);
+    X509_free(s_dcert);
+    EVP_PKEY_free(s_dkey);
+    OPENSSL_free(dpass);
 #ifndef OPENSSL_NO_SRP
     OPENSSL_free(srp_arg.srppassin);
 #endif

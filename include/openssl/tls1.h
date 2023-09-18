@@ -24,6 +24,7 @@ extern "C" {
 #  define OPENSSL_TLS_SECURITY_LEVEL 1
 # endif
 
+# define TLCP_VERSION                    0x0101
 # define TLS1_VERSION                    0x0301
 # define TLS1_1_VERSION                  0x0302
 # define TLS1_2_VERSION                  0x0303
@@ -32,6 +33,9 @@ extern "C" {
 
 /* Special value for method supporting multiple versions */
 # define TLS_ANY_VERSION                 0x10000
+
+# define TLCP_VERSION_MAJOR              0x01
+# define TLCP_VERSION_MINOR              0x01
 
 # define TLS1_VERSION_MAJOR              0x03
 # define TLS1_VERSION_MINOR              0x01
@@ -72,6 +76,14 @@ extern "C" {
 # define TLS1_AD_BAD_CERTIFICATE_HASH_VALUE 114
 # define TLS1_AD_UNKNOWN_PSK_IDENTITY    115/* fatal */
 # define TLS1_AD_NO_APPLICATION_PROTOCOL 120 /* fatal */
+
+/* TLCP(GB/T 38636-2020) alerts */
+# define TLCP_AD_UNSUPPORTED_SITE2SITE   200 /* fatal */
+# define TLCP_AD_NO_AREA                 201
+# define TLCP_AD_UNSUPPORTED_AREATYPE    202
+# define TLCP_AD_BAD_IBCPARAM            203 /* fatal */
+# define TLCP_AD_UNSUPPORTED_IBCPARAM    204 /* fatal */
+# define TLCP_AD_IDENTITY_NEED           205 /* fatal */
 
 /* ExtensionType values from RFC3546 / RFC4366 / RFC6066 */
 # define TLSEXT_TYPE_server_name                 0
@@ -641,6 +653,10 @@ __owur int SSL_check_chain(SSL *s, X509 *x, EVP_PKEY *pk, STACK_OF(X509) *chain)
 # define TLS1_CK_RSA_PSK_WITH_ARIA_128_GCM_SHA256         0x0300C06E
 # define TLS1_CK_RSA_PSK_WITH_ARIA_256_GCM_SHA384         0x0300C06F
 
+/* some TLCP ciphersuites from GB/T 38636-2020 */
+# define TLCP_CK_ECDHE_SM2_WITH_SM4_CBC_SM3               0x0300E011
+# define TLCP_CK_ECC_SM2_WITH_SM4_CBC_SM3                 0x0300E013
+
 /* a bundle of RFC standard cipher names, generated from ssl3_ciphers[] */
 # define TLS1_RFC_RSA_WITH_AES_128_SHA                   "TLS_RSA_WITH_AES_128_CBC_SHA"
 # define TLS1_RFC_DHE_DSS_WITH_AES_128_SHA               "TLS_DHE_DSS_WITH_AES_128_CBC_SHA"
@@ -1126,6 +1142,10 @@ __owur int SSL_check_chain(SSL *s, X509 *x, EVP_PKEY *pk, STACK_OF(X509) *chain)
 # define TLS1_TXT_DHE_PSK_WITH_ARIA_256_GCM_SHA384         "DHE-PSK-ARIA256-GCM-SHA384"
 # define TLS1_TXT_RSA_PSK_WITH_ARIA_128_GCM_SHA256         "RSA-PSK-ARIA128-GCM-SHA256"
 # define TLS1_TXT_RSA_PSK_WITH_ARIA_256_GCM_SHA384         "RSA-PSK-ARIA256-GCM-SHA384"
+
+/* some TLCP ciphersuites from GB/T 38636-2020 */
+# define TLCP_TXT_ECDHE_SM2_WITH_SM4_CBC_SM3               "ECDHE-SM4-CBC-SM3"
+# define TLCP_TXT_ECC_SM2_WITH_SM4_CBC_SM3                 "ECC-SM4-CBC-SM3"
 
 # define TLS_CT_RSA_SIGN                 1
 # define TLS_CT_DSS_SIGN                 2
