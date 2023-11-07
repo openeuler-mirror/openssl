@@ -7,9 +7,21 @@
  https://github.com/openssl/openssl/commits/ and pick the appropriate
  release branch.
 
- Changes between 1.1.1w and 1.1.1x [xx XXX xxxx]
+ Changes between 1.1.1w and 1.1.1ea [8 Nov 2023]
 
- *)
+ *) Make DH_check_pub_key() and DH_generate_key() safer yet
+   
+   We already check for an excessively large P in DH_generate_key(), but not in
+   DH_check_pub_key(), and none of them check for an excessively large Q.
+
+   This change adds all the missing excessive size checks of P and Q.
+
+   It's to be noted that behaviours surrounding excessively sized P and Q
+   differ.  DH_check() raises an error on the excessively sized P, but only
+   sets a flag for the excessively sized Q.  This behaviour is mimicked in
+   DH_check_pub_key().
+
+   Fix CVE-2023-5678
 
  Changes between 1.1.1v and 1.1.1w [11 Sep 2023]
 
