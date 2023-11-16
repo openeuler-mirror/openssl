@@ -5,11 +5,7 @@
   This file gives a brief overview of the major changes between each OpenSSL
   release. For more details please read the CHANGES file.
 
-  Major changes between OpenSSL 1.1.1ea and OpenSSL 1.1.1eb [under development]
-
-      o
-
-  Major changes between OpenSSL 1.1.1w and OpenSSL 1.1.1ea [8 Nov 2023]
+  Major changes between OpenSSL 1.1.1w and OpenSSL 1.1.1wa [16 Nov 2023]
 
       o Make DH_check_pub_key() and DH_generate_key() safer yet (CVE-2023-5678)
 

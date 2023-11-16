@@ -1517,13 +1517,13 @@ sub get_next_version()
 	my ($base, $letter) = $thisversion =~ /^(\d_\d_\d)([a-z]{0,2})$/;
 
 	if ($thisversion eq "1_1_1w") {
-		return "1_1_1"."ea";
+		return "1_1_1"."wa";
 	}
 	if ((length $letter) > 1) {
 		my $baseletter = "";
 		my $endletter;
 		($baseletter, $endletter) = $letter =~ /([a-z]+)([a-z])/;
-		if ($baseletter eq "e") {
+		if ($baseletter eq "w") {
 			return "1_1_1".$baseletter.(++$endletter);
 		}
 	}
