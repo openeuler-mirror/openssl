@@ -54,6 +54,7 @@ int ERR_load_DH_strings(void);
 #  define DH_F_PKEY_DH_DERIVE                              112
 #  define DH_F_PKEY_DH_INIT                                125
 #  define DH_F_PKEY_DH_KEYGEN                              113
+#  define DH_F_DH_CHECK_PUB_KEY                            127
 
 /*
  * DH reason codes.

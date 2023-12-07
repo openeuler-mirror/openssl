@@ -201,7 +201,7 @@ int DH_check_pub_key(const DH *dh, const BIGNUM *pub_key, int *ret)
 
     /* Don't do any checks at all with an excessively large modulus */
     if (BN_num_bits(dh->p) > OPENSSL_DH_CHECK_MAX_MODULUS_BITS) {
-        DHerr(DH_F_DH_CHECK_EX, DH_R_MODULUS_TOO_LARGE);
+        DHerr(DH_F_DH_CHECK_PUB_KEY, DH_R_MODULUS_TOO_LARGE);
         *ret = DH_MODULUS_TOO_LARGE | DH_CHECK_PUBKEY_INVALID;
         return 0;
     }

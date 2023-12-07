@@ -208,7 +208,7 @@ static int compute_key(unsigned char *key, const BIGNUM *pub_key, DH *dh)
     int ret = -1;
     int check_result;
 
-   if (dh->q != NULL
+    if (dh->q != NULL
         && BN_num_bits(dh->q) > OPENSSL_DH_MAX_MODULUS_BITS) {
         DHerr(DH_F_COMPUTE_KEY, DH_R_Q_TOO_LARGE);
         goto err;
