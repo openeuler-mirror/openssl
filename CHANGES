@@ -7,6 +7,12 @@
  https://github.com/openssl/openssl/commits/ and pick the appropriate
  release branch.
 
+ Changes between 1.1.1wa and 1.1.1wb [30 Jan 2023]
+
+ *) Add NULL checks where ContentInfo data can be NULL
+
+   Fix CVE-2024-0727
+
  Changes between 1.1.1w and 1.1.1wa [16 Nov 2023]
 
  *) Make DH_check_pub_key() and DH_generate_key() safer yet
