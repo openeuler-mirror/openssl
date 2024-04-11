@@ -685,4 +685,6 @@ static ossl_inline BIGNUM *bn_expand(BIGNUM *a, int bits)
     return bn_expand2((a),(bits+BN_BITS2-1)/BN_BITS2);
 }
 
+int bn_mask_bits_fixed_top(BIGNUM *a, int n);
+
 #endif

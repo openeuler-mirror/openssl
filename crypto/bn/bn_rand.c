@@ -214,15 +214,17 @@ int BN_generate_dsa_nonce(BIGNUM *out, const BIGNUM *range,
     unsigned char random_bytes[64];
     unsigned char digest[SHA512_DIGEST_LENGTH];
     unsigned done, todo;
-    /* We generate |range|+8 bytes of random output. */
-    const unsigned num_k_bytes = BN_num_bytes(range) + 8;
+    /* We generate |range|+1 bytes of random output. */
+    const unsigned num_k_bytes = BN_num_bytes(range) + 1;
     unsigned char private_bytes[96];
-    unsigned char *k_bytes;
+    unsigned char *k_bytes = NULL;
+    const int max_n = 64;           /* Pr(failure to generate) < 2^max_n */
+    int n;
     int ret = 0;
 
     k_bytes = OPENSSL_malloc(num_k_bytes);
     if (k_bytes == NULL)
-        goto err;
+        goto end;
 
     /* We copy |priv| into a local buffer to avoid exposing its length. */
     if (BN_bn2binpad(priv, private_bytes, sizeof(private_bytes)) < 0) {
@@ -232,34 +234,47 @@ int BN_generate_dsa_nonce(BIGNUM *out, const BIGNUM *range,
          * length of the private key.
          */
         BNerr(BN_F_BN_GENERATE_DSA_NONCE, BN_R_PRIVATE_KEY_TOO_LARGE);
-        goto err;
+        goto end;
     }
+    for (n = 0; n < max_n; n++) {
+        for (done = 0; done < num_k_bytes;) {
+            if (RAND_priv_bytes(random_bytes, sizeof(random_bytes)) != 1)
+                goto end;
+            SHA512_Init(&sha);
+            SHA512_Update(&sha, &done, sizeof(done));
+            SHA512_Update(&sha, private_bytes, sizeof(private_bytes));
+            SHA512_Update(&sha, message, message_len);
+            SHA512_Update(&sha, random_bytes, sizeof(random_bytes));
+            SHA512_Final(digest, &sha);
 
-    for (done = 0; done < num_k_bytes;) {
-        if (RAND_priv_bytes(random_bytes, sizeof(random_bytes)) != 1)
-            goto err;
-        SHA512_Init(&sha);
-        SHA512_Update(&sha, &done, sizeof(done));
-        SHA512_Update(&sha, private_bytes, sizeof(private_bytes));
-        SHA512_Update(&sha, message, message_len);
-        SHA512_Update(&sha, random_bytes, sizeof(random_bytes));
-        SHA512_Final(digest, &sha);
+            todo = num_k_bytes - done;
+            if (todo > SHA512_DIGEST_LENGTH)
+                todo = SHA512_DIGEST_LENGTH;
+            memcpy(k_bytes + done, digest, todo);
+            done += todo;
+            }
 
-        todo = num_k_bytes - done;
-        if (todo > SHA512_DIGEST_LENGTH)
-            todo = SHA512_DIGEST_LENGTH;
-        memcpy(k_bytes + done, digest, todo);
-        done += todo;
+        /* Ensure top byte is set to avoid non-constant time in bin2bn */
+        k_bytes[0] = 0x80;
+        if (!BN_bin2bn(k_bytes, num_k_bytes, out))
+            goto end;
+
+        /* Clear out the top bits and rejection filter into range */
+        BN_set_flags(out, BN_FLG_CONSTTIME | BN_FLG_FIXED_TOP);
+        bn_mask_bits_fixed_top(out, BN_num_bits(range));
+
+        if (BN_ucmp(out, range) < 0) {
+            ret = 1;
+            goto end;
+        }
     }
+    /* Failed to generate anything */
+    BNerr(BN_F_BN_GENERATE_DSA_NONCE, ERR_R_INTERNAL_ERROR);
 
-    if (!BN_bin2bn(k_bytes, num_k_bytes, out))
-        goto err;
-    if (BN_mod(out, out, range, ctx) != 1)
-        goto err;
-    ret = 1;
-
- err:
-    OPENSSL_free(k_bytes);
+ end:
+    OPENSSL_clear_free(k_bytes, num_k_bytes);
+    OPENSSL_cleanse(digest, sizeof(digest));
+    OPENSSL_cleanse(random_bytes, sizeof(random_bytes));
     OPENSSL_cleanse(private_bytes, sizeof(private_bytes));
     return ret;
 }
