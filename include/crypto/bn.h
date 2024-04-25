@@ -89,5 +89,7 @@ int bn_lshift_fixed_top(BIGNUM *r, const BIGNUM *a, int n);
 int bn_rshift_fixed_top(BIGNUM *r, const BIGNUM *a, int n);
 int bn_div_fixed_top(BIGNUM *dv, BIGNUM *rem, const BIGNUM *m,
                      const BIGNUM *d, BN_CTX *ctx);
+int bn_mask_bits_fixed_top(BIGNUM *a, int n);
+int bn_is_word_fixed_top(const BIGNUM *a, BN_ULONG w);
 
 #endif
