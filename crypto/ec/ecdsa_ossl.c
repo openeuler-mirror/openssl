@@ -95,13 +95,13 @@ static int ecdsa_sign_setup(EC_KEY *eckey, BN_CTX *ctx_in,
                     goto err;
                 }
             } else {
-                if (!BN_priv_rand_range(k, order)) {
+                if (!bn_priv_rand_range_fixed_top(k, order)) {
                     ECerr(EC_F_ECDSA_SIGN_SETUP,
                           EC_R_RANDOM_NUMBER_GENERATION_FAILED);
                     goto err;
                 }
             }
-        } while (BN_is_zero(k));
+        } while (bn_is_word_fixed_top(k, 0));
 
         /* compute r the x-coordinate of generator * k */
         if (!EC_POINT_mul(group, tmp_point, k, NULL, NULL, ctx)) {

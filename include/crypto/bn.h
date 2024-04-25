@@ -91,5 +91,6 @@ int bn_div_fixed_top(BIGNUM *dv, BIGNUM *rem, const BIGNUM *m,
                      const BIGNUM *d, BN_CTX *ctx);
 int bn_mask_bits_fixed_top(BIGNUM *a, int n);
 int bn_is_word_fixed_top(const BIGNUM *a, BN_ULONG w);
+int bn_priv_rand_range_fixed_top(BIGNUM *r, const BIGNUM *range);
 
 #endif

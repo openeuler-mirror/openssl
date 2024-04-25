@@ -232,9 +232,9 @@ static int dsa_sign_setup(DSA *dsa, BN_CTX *ctx_in,
             if (!BN_generate_dsa_nonce(k, dsa->q, dsa->priv_key, dgst,
                                        dlen, ctx))
                 goto err;
-        } else if (!BN_priv_rand_range(k, dsa->q))
+        } else if (!bn_priv_rand_range_fixed_top(k, dsa->q))
             goto err;
-    } while (BN_is_zero(k));
+    } while (bn_is_word_fixed_top(k, 0));
 
     BN_set_flags(k, BN_FLG_CONSTTIME);
     BN_set_flags(l, BN_FLG_CONSTTIME);

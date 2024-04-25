@@ -194,6 +194,45 @@ int BN_pseudo_rand_range(BIGNUM *r, const BIGNUM *range)
     return BN_rand_range(r, range);
 }
 
+int bn_priv_rand_range_fixed_top(BIGNUM *r, const BIGNUM *range)
+{
+    int n;
+    int count = 100;
+
+    if (r == NULL) {
+        BNerr(BN_F_BN_PRIV_RAND_RANGE_FIXED_TOP, ERR_R_PASSED_NULL_PARAMETER);
+        return 0;
+    }
+
+    if (range->neg || BN_is_zero(range)) {
+        BNerr(BN_F_BN_PRIV_RAND_RANGE_FIXED_TOP, BN_R_INVALID_RANGE);
+        return 0;
+    }
+
+    n = BN_num_bits(range);     /* n > 0 */
+
+    /* BN_is_bit_set(range, n - 1) always holds */
+
+    if (n == 1) {
+        BN_zero(r);
+    } else {
+        BN_set_flags(r, BN_FLG_CONSTTIME);
+        do {
+            if (!bnrand(PRIVATE, r, n + 1, BN_RAND_TOP_ONE, BN_RAND_BOTTOM_ANY))
+                return 0;
+
+            if (!--count) {
+                BNerr(BN_F_BN_PRIV_RAND_RANGE_FIXED_TOP, BN_R_TOO_MANY_ITERATIONS);
+                return 0;
+            }
+            bn_mask_bits_fixed_top(r, n);
+        }
+        while (BN_ucmp(r, range) >= 0);
+    }
+
+    return 1;
+}
+
 /*
  * BN_generate_dsa_nonce generates a random number 0 <= out < range. Unlike
  * BN_rand_range, it also includes the contents of |priv| and |message| in
