@@ -229,8 +229,9 @@ static int dsa_sign_setup(DSA *dsa, BN_CTX *ctx_in,
              * We calculate k from SHA512(private_key + H(message) + random).
              * This protects the private key from a weak PRNG.
              */
-            if (!BN_generate_dsa_nonce(k, dsa->q, dsa->priv_key, dgst,
-                                       dlen, ctx))
+            if (!bn_gen_dsa_nonce_fixed_top(k, dsa->q,
+                                            dsa->priv_key, dgst,
+                                            dlen, ctx))
                 goto err;
         } else if (!bn_priv_rand_range_fixed_top(k, dsa->q))
             goto err;

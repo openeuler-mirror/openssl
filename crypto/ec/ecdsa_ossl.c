@@ -88,8 +88,8 @@ static int ecdsa_sign_setup(EC_KEY *eckey, BN_CTX *ctx_in,
         /* get random k */
         do {
             if (dgst != NULL) {
-                if (!BN_generate_dsa_nonce(k, order, priv_key,
-                                           dgst, dlen, ctx)) {
+                if (!bn_gen_dsa_nonce_fixed_top(k, order, priv_key,
+                                                dgst, dlen, ctx)) {
                     ECerr(EC_F_ECDSA_SIGN_SETUP,
                           EC_R_RANDOM_NUMBER_GENERATION_FAILED);
                     goto err;

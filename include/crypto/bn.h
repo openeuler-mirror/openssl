@@ -92,5 +92,8 @@ int bn_div_fixed_top(BIGNUM *dv, BIGNUM *rem, const BIGNUM *m,
 int bn_mask_bits_fixed_top(BIGNUM *a, int n);
 int bn_is_word_fixed_top(const BIGNUM *a, BN_ULONG w);
 int bn_priv_rand_range_fixed_top(BIGNUM *r, const BIGNUM *range);
-
+int bn_gen_dsa_nonce_fixed_top(BIGNUM *out, const BIGNUM *range,
+                               const BIGNUM *priv,
+                               const unsigned char *message,
+                               size_t message_len, BN_CTX *ctx);
 #endif
