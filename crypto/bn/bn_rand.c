@@ -228,6 +228,10 @@ int bn_priv_rand_range_fixed_top(BIGNUM *r, const BIGNUM *range)
             bn_mask_bits_fixed_top(r, n);
         }
         while (BN_ucmp(r, range) >= 0);
+#ifdef BN_DEBUG
+        /* With BN_DEBUG on a fixed top number cannot be returned */
+        bn_correct_top(r);
+#endif
     }
 
     return 1;
@@ -308,6 +312,10 @@ int bn_gen_dsa_nonce_fixed_top(BIGNUM *out, const BIGNUM *range,
 
         if (BN_ucmp(out, range) < 0) {
             ret = 1;
+#ifdef BN_DEBUG
+            /* With BN_DEBUG on a fixed top number cannot be returned */
+            bn_correct_top(out);
+#endif
             goto end;
         }
     }
