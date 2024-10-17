@@ -7,7 +7,25 @@
  https://github.com/openssl/openssl/commits/ and pick the appropriate
  release branch.
 
- Changes between 1.1.1wa and 1.1.1wb [30 Jan 2023]
+ Changes between 1.1.1wb and 1.1.1wc [17 Oct 2024]
+
+ *) Harden BN_GF2m_poly2arr against misuse.
+
+   Fix CVE-2024-9143
+
+ *) Fix SSL_select_next_proto and add ALPN validation in the client
+
+   Fix CVE-2024-5535
+
+ *) Fix possible use-after-free in SSL_free_buffers
+
+   Fix CVE-2024-4741
+
+ *) Fix unconstrained session cache growth in TLSv1.3
+
+   Fix CVE-2024-2511
+
+ Changes between 1.1.1wa and 1.1.1wb [30 Jan 2024]
 
  *) Add NULL checks where ContentInfo data can be NULL
 
