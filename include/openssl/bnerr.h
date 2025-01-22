@@ -74,6 +74,8 @@ int ERR_load_BN_strings(void);
 # define BN_F_BN_USUB                                     115
 # define BN_F_OSSL_BN_RSA_DO_UNBLIND                      151
 # define BN_F_BN_MOD_EXP_MONT_FIXED_TOP                   152
+# define BN_F_BN_PRIV_RAND_RANGE_FIXED_TOP                153
+# define BN_F_BN_GEN_DSA_NONCE_FIXED_TOP                  154
 
 /*
  * BN reason codes.
