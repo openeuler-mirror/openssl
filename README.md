@@ -127,3 +127,7 @@ default_algorithms = DIGESTS,CIPHERS
 本项目基于Mulan PSL v2许可证开源。详见LICENSE文件。
 
 ## 贡献
+
+build by openHiTLS community with ❤️, not for commicial use
+
+
