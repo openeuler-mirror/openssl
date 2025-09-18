@@ -8,8 +8,31 @@ const EVP_MD *get_external_sm3_method(void)
     return EVP_sm3();
 }
 
+int sm_sm3_result_size(void)
+{
+    const EVP_MD *md = get_external_sm3_method();
+    if (!md) return 0;
+    int sz = EVP_MD_size(md);
+    return sz;
+}
+
+int sm_sm3_app_datasize(void)
+{
+    const EVP_MD *md = get_external_sm3_method();
+    if (!md) return 0;
+    int sz = EVP_MD_meth_get_app_datasize(md);
+    return sz;
+}
+
+int sm_sm3_pkey_type(void)
+{
+    const EVP_MD *md = get_external_sm3_method();
+    if (!md) return NID_undef;
+    return EVP_MD_pkey_type(md);
+}
+
 /* OpenSSL EVP interface implementations */
-int sm3_init(EVP_MD_CTX *ctx)
+int sm_sm3_init(EVP_MD_CTX *ctx)
 {
     const EVP_MD *md = get_external_sm3_method();
     if (!md) {
@@ -22,7 +45,7 @@ int sm3_init(EVP_MD_CTX *ctx)
     return fn(ctx);
 }
 
-int sm3_update(EVP_MD_CTX *ctx, const void *data, size_t count)
+int sm_sm3_update(EVP_MD_CTX *ctx, const void *data, size_t count)
 {
     const EVP_MD *md = get_external_sm3_method();
     if (!md) {
@@ -35,7 +58,7 @@ int sm3_update(EVP_MD_CTX *ctx, const void *data, size_t count)
     return fn(ctx, data, count);
 }
 
-int sm3_final(EVP_MD_CTX *ctx, unsigned char *md)
+int sm_sm3_final(EVP_MD_CTX *ctx, unsigned char *md)
 {
     const EVP_MD *md_method = get_external_sm3_method();
     if (!md_method) {
@@ -48,7 +71,7 @@ int sm3_final(EVP_MD_CTX *ctx, unsigned char *md)
     return fn(ctx, md);
 }
 
-int sm3_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
+int sm_sm3_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
 {
     const EVP_MD *md = get_external_sm3_method();
     if (!md) {
@@ -61,7 +84,7 @@ int sm3_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
     return fn(to, from);
 }
 
-int sm3_cleanup(EVP_MD_CTX *ctx)
+int sm_sm3_cleanup(EVP_MD_CTX *ctx)
 {
     const EVP_MD *md = get_external_sm3_method();
     if (!md) {

@@ -82,35 +82,35 @@ static int sm_init(ENGINE *e)
 {
     (void)e;
     /* Create SM3 method */
-    g_sm3_md = EVP_MD_meth_new(NID_sm3, NID_undef);
+    g_sm3_md = EVP_MD_meth_new(NID_sm3, sm_sm3_pkey_type());
     if (!g_sm3_md) return 0;
-    if (!EVP_MD_meth_set_result_size(g_sm3_md, SM3_DIGEST_LENGTH)) return 0;
-    if (!EVP_MD_meth_set_app_datasize(g_sm3_md, (int)sizeof(SM3_CTX))) return 0;
-    if (!EVP_MD_meth_set_init(g_sm3_md, sm3_init)) return 0;
-    if (!EVP_MD_meth_set_update(g_sm3_md, sm3_update)) return 0;
-    if (!EVP_MD_meth_set_final(g_sm3_md, sm3_final)) return 0;
-    if (!EVP_MD_meth_set_copy(g_sm3_md, sm3_copy)) return 0;
-    if (!EVP_MD_meth_set_cleanup(g_sm3_md, sm3_cleanup)) return 0;
+    if (!EVP_MD_meth_set_result_size(g_sm3_md, sm_sm3_result_size())) return 0;
+    if (!EVP_MD_meth_set_app_datasize(g_sm3_md, sm_sm3_app_datasize())) return 0;
+    if (!EVP_MD_meth_set_init(g_sm3_md, sm_sm3_init)) return 0;
+    if (!EVP_MD_meth_set_update(g_sm3_md, sm_sm3_update)) return 0;
+    if (!EVP_MD_meth_set_final(g_sm3_md, sm_sm3_final)) return 0;
+    if (!EVP_MD_meth_set_copy(g_sm3_md, sm_sm3_copy)) return 0;
+    if (!EVP_MD_meth_set_cleanup(g_sm3_md, sm_sm3_cleanup)) return 0;
 
-    /* Create SM4 CBC method */
-    g_sm4_cbc = EVP_CIPHER_meth_new(NID_sm4_cbc, SM4_BLOCK_SIZE, SM4_KEY_SIZE);
+    /* Create SM4 CBC method (directly using sm_ helpers) */
+    g_sm4_cbc = EVP_CIPHER_meth_new(NID_sm4_cbc, sm_sm4_block_size_cbc(), sm_sm4_key_length());
     if (!g_sm4_cbc) return 0;
-    if (!EVP_CIPHER_meth_set_iv_length(g_sm4_cbc, SM4_BLOCK_SIZE)) return 0;
-    if (!EVP_CIPHER_meth_set_flags(g_sm4_cbc, EVP_CIPH_CBC_MODE)) return 0;
-    if (!EVP_CIPHER_meth_set_init(g_sm4_cbc, sm4_cbc_init)) return 0;
-    if (!EVP_CIPHER_meth_set_do_cipher(g_sm4_cbc, sm4_cbc_cipher)) return 0;
-    if (!EVP_CIPHER_meth_set_cleanup(g_sm4_cbc, sm4_cbc_cleanup)) return 0;
-    if (!EVP_CIPHER_meth_set_impl_ctx_size(g_sm4_cbc, (int)sizeof(SM4_KEY))) return 0;
+    if (!EVP_CIPHER_meth_set_iv_length(g_sm4_cbc, sm_sm4_iv_length_cbc())) return 0;
+    if (!EVP_CIPHER_meth_set_flags(g_sm4_cbc, sm_sm4_flags_cbc())) return 0;
+    if (!EVP_CIPHER_meth_set_init(g_sm4_cbc, sm_sm4_cbc_init)) return 0;
+    if (!EVP_CIPHER_meth_set_do_cipher(g_sm4_cbc, sm_sm4_cbc_cipher)) return 0;
+    if (!EVP_CIPHER_meth_set_cleanup(g_sm4_cbc, sm_sm4_cbc_cleanup)) return 0;
+    if (!EVP_CIPHER_meth_set_impl_ctx_size(g_sm4_cbc, sm_sm4_cbc_impl_ctx_size())) return 0;
 
-    /* Create SM4 ECB method */
-    g_sm4_ecb = EVP_CIPHER_meth_new(NID_sm4_ecb, SM4_BLOCK_SIZE, SM4_KEY_SIZE);
+    /* Create SM4 ECB method (directly using sm_ helpers) */
+    g_sm4_ecb = EVP_CIPHER_meth_new(NID_sm4_ecb, sm_sm4_block_size_ecb(), sm_sm4_key_length());
     if (!g_sm4_ecb) return 0;
-    if (!EVP_CIPHER_meth_set_iv_length(g_sm4_ecb, 0)) return 0;
-    if (!EVP_CIPHER_meth_set_flags(g_sm4_ecb, EVP_CIPH_ECB_MODE)) return 0;
-    if (!EVP_CIPHER_meth_set_init(g_sm4_ecb, sm4_ecb_init)) return 0;
-    if (!EVP_CIPHER_meth_set_do_cipher(g_sm4_ecb, sm4_ecb_cipher)) return 0;
-    if (!EVP_CIPHER_meth_set_cleanup(g_sm4_ecb, sm4_ecb_cleanup)) return 0;
-    if (!EVP_CIPHER_meth_set_impl_ctx_size(g_sm4_ecb, (int)sizeof(SM4_KEY))) return 0;
+    if (!EVP_CIPHER_meth_set_iv_length(g_sm4_ecb, sm_sm4_iv_length_ecb())) return 0;
+    if (!EVP_CIPHER_meth_set_flags(g_sm4_ecb, sm_sm4_flags_ecb())) return 0;
+    if (!EVP_CIPHER_meth_set_init(g_sm4_ecb, sm_sm4_ecb_init)) return 0;
+    if (!EVP_CIPHER_meth_set_do_cipher(g_sm4_ecb, sm_sm4_ecb_cipher)) return 0;
+    if (!EVP_CIPHER_meth_set_cleanup(g_sm4_ecb, sm_sm4_ecb_cleanup)) return 0;
+    if (!EVP_CIPHER_meth_set_impl_ctx_size(g_sm4_ecb, sm_sm4_ecb_impl_ctx_size())) return 0;
 
     return 1;
 }

@@ -1,5 +1,7 @@
 # SM Engine - OpenSSL Engine for SM3 and SM4 Algorithms (Static Library)
 
+这是一个基于OpenSSL 1.1.1的引擎实现，通过静态链接外部OpenSSL库来提供SM3哈希算法和SM4加密算法的支持。
+
 ## 功能特性
 
 - **SM3哈希算法**: 通过静态链接的外部OpenSSL库的EVP接口实现SM3哈希算法
@@ -125,4 +127,3 @@ default_algorithms = DIGESTS,CIPHERS
 本项目基于MIT许可证开源。详见LICENSE文件。
 
 ## 贡献
-
