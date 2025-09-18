@@ -1,0 +1,13 @@
+# Symbol version file for SM Engine
+# This file controls which symbols are visible in the shared library
+
+# Global symbols - only engine initialization functions are visible
+{
+  global:
+    bind_engine;
+    v_check;
+    
+  local:
+    # Hide all other symbols
+    *;
+};
