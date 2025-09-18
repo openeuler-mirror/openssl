@@ -1,10 +1,10 @@
-#include <openssl/engine.h>
-#include <openssl/evp.h>
-#include <openssl/err.h>
-#include <openssl/conf.h>
-#include <openssl/objects.h>
 #include "sm3.h"
 #include "sm4.h"
+#include <openssl/conf.h>
+#include <openssl/engine.h>
+#include <openssl/err.h>
+#include <openssl/evp.h>
+#include <openssl/objects.h>
 
 /* Engine control commands */
 #define ENGINE_CTRL_SET_LOG_LEVEL 1000
@@ -20,8 +20,8 @@ static EVP_CIPHER *gSm4Cbc = NULL;
 static EVP_CIPHER *gSm4Ecb = NULL;
 
 /* SM3 digest function */
-static int SmDigests(ENGINE *e, const EVP_MD **digest, const int **nids, int nid)
-{
+static int SmDigests(ENGINE *e, const EVP_MD **digest, const int **nids,
+                     int nid) {
     (void)e;
     static int sm3Nids[] = {NID_sm3, 0};
     if (digest == NULL) {
@@ -44,8 +44,8 @@ static int SmDigests(ENGINE *e, const EVP_MD **digest, const int **nids, int nid
 }
 
 /* SM4 cipher function */
-static int SmCiphers(ENGINE *e, const EVP_CIPHER **cipher, const int **nids, int nid)
-{
+static int SmCiphers(ENGINE *e, const EVP_CIPHER **cipher, const int **nids,
+                     int nid) {
     (void)e;
     static int sm4Nids[] = {NID_sm4_cbc, NID_sm4_ecb, 0};
     if (cipher == NULL) {
@@ -77,8 +77,7 @@ static int SmCiphers(ENGINE *e, const EVP_CIPHER **cipher, const int **nids, int
 }
 
 /* Initialize SM3 digest method */
-static int InitSm3Digest(void)
-{
+static int InitSm3Digest(void) {
     gSm3Md = EVP_MD_meth_new(NID_sm3, SmSm3PkeyType());
     if (!gSm3Md) {
         return 0;
@@ -108,9 +107,9 @@ static int InitSm3Digest(void)
 }
 
 /* Initialize SM4 CBC cipher method */
-static int InitSm4Cbc(void)
-{
-    gSm4Cbc = EVP_CIPHER_meth_new(NID_sm4_cbc, SmSm4BlockSizeCbc(), SmSm4KeyLength());
+static int InitSm4Cbc(void) {
+    gSm4Cbc =
+        EVP_CIPHER_meth_new(NID_sm4_cbc, SmSm4BlockSizeCbc(), SmSm4KeyLength());
     if (!gSm4Cbc) {
         return 0;
     }
@@ -136,9 +135,9 @@ static int InitSm4Cbc(void)
 }
 
 /* Initialize SM4 ECB cipher method */
-static int InitSm4Ecb(void)
-{
-    gSm4Ecb = EVP_CIPHER_meth_new(NID_sm4_ecb, SmSm4BlockSizeEcb(), SmSm4KeyLength());
+static int InitSm4Ecb(void) {
+    gSm4Ecb =
+        EVP_CIPHER_meth_new(NID_sm4_ecb, SmSm4BlockSizeEcb(), SmSm4KeyLength());
     if (!gSm4Ecb) {
         return 0;
     }
@@ -164,8 +163,7 @@ static int InitSm4Ecb(void)
 }
 
 /* Engine initialization */
-static int SmInit(ENGINE *e)
-{
+static int SmInit(ENGINE *e) {
     (void)e;
 
     /* Initialize SM3 digest */
@@ -187,8 +185,7 @@ static int SmInit(ENGINE *e)
 }
 
 /* Engine cleanup */
-static int SmFinish(ENGINE *e)
-{
+static int SmFinish(ENGINE *e) {
     (void)e;
     if (gSm3Md) {
         EVP_MD_meth_free(gSm3Md);
@@ -206,15 +203,13 @@ static int SmFinish(ENGINE *e)
 }
 
 /* Engine destroy */
-static int SmDestroy(ENGINE *e)
-{
+static int SmDestroy(ENGINE *e) {
     (void)e;
     return 1;
 }
 
 /* Engine control */
-static int SmCtrl(ENGINE *e, int cmd, long i, void *p, void (*f)(void))
-{
+static int SmCtrl(ENGINE *e, int cmd, long i, void *p, void (*f)(void)) {
     (void)e;
     (void)i;
     (void)p;
@@ -228,26 +223,21 @@ static int SmCtrl(ENGINE *e, int cmd, long i, void *p, void (*f)(void))
 }
 
 /* Engine command definitions */
-static const ENGINE_CMD_DEFN smCmdDefns[] = {
-    {0, NULL, NULL, 0}
-};
+static const ENGINE_CMD_DEFN smCmdDefns[] = {{0, NULL, NULL, 0}};
 
 /* Engine implementation */
 
 /* Engine bind function */
-static int SmBind(ENGINE *e, const char *id)
-{
-    (void)id;  /* Unused parameter */
+static int SmBind(ENGINE *e, const char *id) {
+    (void)id; /* Unused parameter */
 
-    if (!ENGINE_set_id(e, engineSmId) ||
-        !ENGINE_set_name(e, engineSmName) ||
+    if (!ENGINE_set_id(e, engineSmId) || !ENGINE_set_name(e, engineSmName) ||
         !ENGINE_set_init_function(e, SmInit) ||
         !ENGINE_set_finish_function(e, SmFinish) ||
         !ENGINE_set_destroy_function(e, SmDestroy) ||
         !ENGINE_set_ctrl_function(e, SmCtrl) ||
         !ENGINE_set_cmd_defns(e, smCmdDefns) ||
-        !ENGINE_set_digests(e, SmDigests) ||
-        !ENGINE_set_ciphers(e, SmCiphers)) {
+        !ENGINE_set_digests(e, SmDigests) || !ENGINE_set_ciphers(e, SmCiphers)) {
         return 0;
     }
     return 1;
