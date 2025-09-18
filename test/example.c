@@ -13,7 +13,7 @@ static void test_sm3(const char *data)
     EVP_MD_CTX *md_ctx;
     const EVP_MD *md;
     unsigned char hash[32];
-    int len;
+    unsigned int len;
 
     printf("SM3哈希示例:\n");
     printf("原始数据: %s\n", data);
@@ -34,7 +34,7 @@ static void test_sm3(const char *data)
         EVP_DigestUpdate(md_ctx, data, strlen(data)) &&
         EVP_DigestFinal_ex(md_ctx, hash, &len)) {
         printf("SM3哈希值: ");
-        for (int i = 0; i < len; i++) {
+        for (unsigned int i = 0; i < len; i++) {
             printf("%02x", hash[i]);
         }
         printf("\n");

@@ -237,6 +237,8 @@ static const ENGINE_CMD_DEFN smCmdDefns[] = {
 /* Engine bind function */
 static int SmBind(ENGINE *e, const char *id)
 {
+    (void)id;  /* Unused parameter */
+
     if (!ENGINE_set_id(e, engineSmId) ||
         !ENGINE_set_name(e, engineSmName) ||
         !ENGINE_set_init_function(e, SmInit) ||
