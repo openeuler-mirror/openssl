@@ -103,6 +103,33 @@ debug: $(TARGET)
 release: CFLAGS += -DNDEBUG
 release: $(TARGET)
 
+# AddressSanitizer build
+asan: CC = clang
+asan: CFLAGS = -Wall -Wextra -g -O0 -fPIC -std=c99 -fsanitize=address -fno-omit-frame-pointer
+asan: LDFLAGS += -fsanitize=address
+asan: $(TARGET)
+	@echo "Built with AddressSanitizer enabled"
+
+# Build and run ASAN tests
+test-asan: asan
+	@echo "Building ASAN test program..."
+	$(CC) -g -O0 -fsanitize=address -fno-omit-frame-pointer $(INCLUDES) \
+		test/test_asan.c -o build/test_asan \
+		-fsanitize=address $(OPENSSL_LIB_PATH) $(LIBS) -ldl
+	@echo "Running ASAN tests..."
+	OPENSSL_ENGINES=$(PWD)/build ASAN_OPTIONS=detect_leaks=1:check_initialization_order=1 ./build/test_asan
+
+# Run Valgrind memory check
+test-valgrind: $(TARGET)
+	@if command -v valgrind >/dev/null 2>&1; then \
+		echo "Running Valgrind memory check..."; \
+		OPENSSL_ENGINES=$(PWD)/build valgrind --leak-check=full --show-leak-kinds=all \
+			--track-origins=yes --log-file=valgrind.log ./build/example; \
+		echo "Valgrind log saved to valgrind.log"; \
+	else \
+		echo "Valgrind not installed. Install with: sudo apt-get install valgrind"; \
+	fi
+
 # Show help
 help:
 	@echo "Available targets:"
@@ -112,8 +139,11 @@ help:
 	@echo "  clean      - Remove build artifacts"
 	@echo "  test       - Run engine tests"
 	@echo "  test-build - Build test executable"
+	@echo "  test-asan  - Run AddressSanitizer tests"
+	@echo "  test-valgrind - Run Valgrind memory check"
 	@echo "  example    - Run simple example"
 	@echo "  example-build - Build example executable"
+	@echo "  asan       - Build with AddressSanitizer"
 	@echo "  debug      - Build with debug symbols"
 	@echo "  release    - Build optimized release version"
 	@echo "  help       - Show this help"
@@ -128,4 +158,4 @@ help:
 	@echo "  make OPENSSL_INCLUDE='/usr/include/openssl /usr/local/include' OPENSSL_LIB_PATH='/usr/lib/libssl.a'"
 	@echo "  make OPENSSL_LIBS='-lcrypto -lssl -ldl'"
 
-.PHONY: all check_paths install uninstall clean test test-build example example-build debug release help
+.PHONY: all check_paths install uninstall clean test test-build test-asan test-valgrind example example-build asan debug release help

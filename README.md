@@ -128,6 +128,6 @@ default_algorithms = DIGESTS,CIPHERS
 
 ## 贡献
 
-build by openHiTLS community with ❤️, not for commicial use
+build by openHiTLS community, not for commicial use
 
 
