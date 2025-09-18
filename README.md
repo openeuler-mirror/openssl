@@ -124,6 +124,6 @@ default_algorithms = DIGESTS,CIPHERS
 
 ## 许可证
 
-本项目基于MIT许可证开源。详见LICENSE文件。
+本项目基于Mulan PSL v2许可证开源。详见LICENSE文件。
 
 ## 贡献

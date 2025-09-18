@@ -39,31 +39,50 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/example.c)
     )
 endif()
 
-# Test engine program (if exists)
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test_engine.c)
-    add_executable(test_engine test_engine.c)
+# Performance test program
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/performance.c)
+    add_executable(performance performance.c)
 
-    target_link_libraries(test_engine
+    target_link_libraries(performance
         sm_engine
         ${OPENSSL_CRYPTO_LIBRARY}
     )
 
     if(UNIX AND NOT APPLE)
-        target_link_libraries(test_engine dl pthread)
+        target_link_libraries(performance dl pthread)
     endif()
 
-    set_target_properties(test_engine PROPERTIES
+    set_target_properties(performance PROPERTIES
         INSTALL_RPATH_USE_LINK_PATH TRUE
         BUILD_RPATH "${CMAKE_BINARY_DIR}/lib"
     )
 
-    add_test(NAME engine_test
-        COMMAND test_engine
+    add_test(NAME performance_test
+        COMMAND performance
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     )
 
-    set_tests_properties(engine_test PROPERTIES
+    set_tests_properties(performance_test PROPERTIES
         ENVIRONMENT "LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/lib:$ENV{LD_LIBRARY_PATH}"
+    )
+endif()
+
+# Quick test program
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/quick_test.c)
+    add_executable(quick_test quick_test.c)
+
+    target_link_libraries(quick_test
+        sm_engine
+        ${OPENSSL_CRYPTO_LIBRARY}
+    )
+
+    if(UNIX AND NOT APPLE)
+        target_link_libraries(quick_test dl pthread)
+    endif()
+
+    set_target_properties(quick_test PROPERTIES
+        INSTALL_RPATH_USE_LINK_PATH TRUE
+        BUILD_RPATH "${CMAKE_BINARY_DIR}/lib"
     )
 endif()
 

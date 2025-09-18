@@ -25,16 +25,27 @@ set_target_properties(sm_engine PROPERTIES
     C_VISIBILITY_PRESET hidden
 )
 
-# Include directories
+# Include directories - ONLY use our custom OpenSSL
 target_include_directories(sm_engine
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${OPENSSL_INCLUDE_DIR}
 )
 
-# Link OpenSSL statically
+# Ensure we don't accidentally include system headers
+target_compile_options(sm_engine PRIVATE
+    -I${OPENSSL_INCLUDE_DIR}
+)
+
+# Link OpenSSL statically - MUST use our custom OpenSSL
 if(OPENSSL_CRYPTO_LIBRARY)
-    target_link_libraries(sm_engine PRIVATE ${OPENSSL_CRYPTO_LIBRARY})
+    # Use absolute path for OpenSSL library
+    get_filename_component(OPENSSL_LIB_ABS "${OPENSSL_CRYPTO_LIBRARY}" ABSOLUTE)
+    target_link_libraries(sm_engine PRIVATE ${OPENSSL_LIB_ABS})
+
+    # Add library directory to link path
+    get_filename_component(OPENSSL_LIB_DIR "${OPENSSL_LIB_ABS}" DIRECTORY)
+    target_link_directories(sm_engine PRIVATE ${OPENSSL_LIB_DIR})
 else()
     message(FATAL_ERROR "OpenSSL crypto library not found")
 endif()

@@ -27,21 +27,29 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # OpenSSL configuration - use the one from 3rd/openssl
+# IMPORTANT: We explicitly use the OpenSSL from 3rd/openssl, NOT the system OpenSSL
 set(OPENSSL_ROOT_DIR "${CMAKE_SOURCE_DIR}/3rd/openssl" CACHE PATH "Path to OpenSSL root directory")
-set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/include" CACHE PATH "Path to OpenSSL include directory")
+
+# Prevent CMake from finding system OpenSSL
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE NEVER)
+unset(OPENSSL_INCLUDE_DIR CACHE)
+unset(OPENSSL_SSL_LIBRARY CACHE)
+unset(OPENSSL_CRYPTO_LIBRARY CACHE)
 
 # Check if OpenSSL is built
 if(EXISTS "${OPENSSL_ROOT_DIR}/build/lib/libcrypto.a")
-    set(OPENSSL_CRYPTO_LIBRARY "${OPENSSL_ROOT_DIR}/build/lib/libcrypto.a")
-    set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/build/include")
+    set(OPENSSL_CRYPTO_LIBRARY "${OPENSSL_ROOT_DIR}/build/lib/libcrypto.a" CACHE FILEPATH "Path to OpenSSL crypto library" FORCE)
+    set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/build/include" CACHE PATH "Path to OpenSSL include directory" FORCE)
 elseif(EXISTS "${OPENSSL_ROOT_DIR}/libcrypto.a")
-    set(OPENSSL_CRYPTO_LIBRARY "${OPENSSL_ROOT_DIR}/libcrypto.a")
+    set(OPENSSL_CRYPTO_LIBRARY "${OPENSSL_ROOT_DIR}/libcrypto.a" CACHE FILEPATH "Path to OpenSSL crypto library" FORCE)
+    set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/include" CACHE PATH "Path to OpenSSL include directory" FORCE)
 else()
-    message(WARNING "OpenSSL libcrypto.a not found. Please build OpenSSL first:")
-    message(WARNING "  cd ${OPENSSL_ROOT_DIR}")
-    message(WARNING "  ./config --prefix=\${PWD}/build")
-    message(WARNING "  make -j4")
-    message(WARNING "  make install_sw")
+    message(FATAL_ERROR "OpenSSL libcrypto.a not found. Please build OpenSSL first:\n"
+                        "  cd ${OPENSSL_ROOT_DIR}\n"
+                        "  ./config --prefix=\${PWD}/build\n"
+                        "  make -j4\n"
+                        "  make install_sw")
 endif()
 
 # Check for OpenSSL headers
