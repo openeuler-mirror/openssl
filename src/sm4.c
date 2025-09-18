@@ -4,35 +4,35 @@
 #include <openssl/evp.h>
 
 /* Get external SM4 methods */
-const EVP_CIPHER *get_external_sm4_cbc_method(void)
+const EVP_CIPHER *GetExternalSm4CbcMethod(void)
 {
     return EVP_sm4_cbc();
 }
 
-const EVP_CIPHER *get_external_sm4_ecb_method(void)
+const EVP_CIPHER *GetExternalSm4EcbMethod(void)
 {
     return EVP_sm4_ecb();
 }
 
-int sm_sm4_cbc_impl_ctx_size(void)
+int SmSm4CbcImplCtxSize(void)
 {
-    const EVP_CIPHER *ext = get_external_sm4_cbc_method();
-    if (!ext) return 0;
+    const EVP_CIPHER *ext = GetExternalSm4CbcMethod();
+    if (!ext) { return 0; }
     int sz = (int)EVP_CIPHER_impl_ctx_size(ext);
     return sz;
 }
 
-int sm_sm4_ecb_impl_ctx_size(void)
+int SmSm4EcbImplCtxSize(void)
 {
-    const EVP_CIPHER *ext = get_external_sm4_ecb_method();
-    if (!ext) return 0;
+    const EVP_CIPHER *ext = GetExternalSm4EcbMethod();
+    if (!ext) { return 0; }
     int sz = (int)EVP_CIPHER_impl_ctx_size(ext);
     return sz;
 }
 
-int sm_sm4_cbc_init(EVP_CIPHER_CTX *ctx, const unsigned char *key, const unsigned char *iv, int enc)
+int SmSm4CbcInit(EVP_CIPHER_CTX *ctx, const unsigned char *key, const unsigned char *iv, int enc)
 {
-    const EVP_CIPHER *cipher = get_external_sm4_cbc_method();
+    const EVP_CIPHER *cipher = GetExternalSm4CbcMethod();
     if (!cipher) {
         return 0;
     }
@@ -44,9 +44,9 @@ int sm_sm4_cbc_init(EVP_CIPHER_CTX *ctx, const unsigned char *key, const unsigne
     return fn(ctx, key, iv, enc);
 }
 
-int sm_sm4_ecb_init(EVP_CIPHER_CTX *ctx, const unsigned char *key, const unsigned char *iv, int enc)
+int SmSm4EcbInit(EVP_CIPHER_CTX *ctx, const unsigned char *key, const unsigned char *iv, int enc)
 {
-    const EVP_CIPHER *cipher = get_external_sm4_ecb_method();
+    const EVP_CIPHER *cipher = GetExternalSm4EcbMethod();
     if (!cipher) {
         return 0;
     }
@@ -58,9 +58,9 @@ int sm_sm4_ecb_init(EVP_CIPHER_CTX *ctx, const unsigned char *key, const unsigne
     return fn(ctx, key, iv, enc);
 }
 
-int sm_sm4_cbc_cleanup(EVP_CIPHER_CTX *ctx)
+int SmSm4CbcCleanup(EVP_CIPHER_CTX *ctx)
 {
-    const EVP_CIPHER *cipher = get_external_sm4_cbc_method();
+    const EVP_CIPHER *cipher = GetExternalSm4CbcMethod();
     if (!cipher) {
         return 0;
     }
@@ -71,9 +71,9 @@ int sm_sm4_cbc_cleanup(EVP_CIPHER_CTX *ctx)
     return fn(ctx);
 }
 
-int sm_sm4_ecb_cleanup(EVP_CIPHER_CTX *ctx)
+int SmSm4EcbCleanup(EVP_CIPHER_CTX *ctx)
 {
-    const EVP_CIPHER *cipher = get_external_sm4_ecb_method();
+    const EVP_CIPHER *cipher = GetExternalSm4EcbMethod();
     if (!cipher) {
         return 0;
     }
@@ -84,51 +84,51 @@ int sm_sm4_ecb_cleanup(EVP_CIPHER_CTX *ctx)
     return fn(ctx);
 }
 
-int sm_sm4_block_size_cbc(void)
+int SmSm4BlockSizeCbc(void)
 {
-    const EVP_CIPHER *ext = get_external_sm4_cbc_method();
+    const EVP_CIPHER *ext = GetExternalSm4CbcMethod();
     return ext ? EVP_CIPHER_block_size(ext) : 0;
 }
 
-int sm_sm4_block_size_ecb(void)
+int SmSm4BlockSizeEcb(void)
 {
-    const EVP_CIPHER *ext = get_external_sm4_ecb_method();
+    const EVP_CIPHER *ext = GetExternalSm4EcbMethod();
     return ext ? EVP_CIPHER_block_size(ext) : 0;
 }
 
-int sm_sm4_key_length(void)
+int SmSm4KeyLength(void)
 {
-    const EVP_CIPHER *ext = get_external_sm4_ecb_method();
+    const EVP_CIPHER *ext = GetExternalSm4EcbMethod();
     return ext ? EVP_CIPHER_key_length(ext) : 0;
 }
 
-int sm_sm4_iv_length_cbc(void)
+int SmSm4IvLengthCbc(void)
 {
-    const EVP_CIPHER *ext = get_external_sm4_cbc_method();
+    const EVP_CIPHER *ext = GetExternalSm4CbcMethod();
     return ext ? EVP_CIPHER_iv_length(ext) : 0;
 }
 
-int sm_sm4_iv_length_ecb(void)
+int SmSm4IvLengthEcb(void)
 {
-    const EVP_CIPHER *ext = get_external_sm4_ecb_method();
+    const EVP_CIPHER *ext = GetExternalSm4EcbMethod();
     return ext ? EVP_CIPHER_iv_length(ext) : 0;
 }
 
-unsigned long sm_sm4_flags_cbc(void)
+unsigned long SmSm4FlagsCbc(void)
 {
-    const EVP_CIPHER *ext = get_external_sm4_cbc_method();
+    const EVP_CIPHER *ext = GetExternalSm4CbcMethod();
     return ext ? EVP_CIPHER_flags(ext) : 0;
 }
 
-unsigned long sm_sm4_flags_ecb(void)
+unsigned long SmSm4FlagsEcb(void)
 {
-    const EVP_CIPHER *ext = get_external_sm4_ecb_method();
+    const EVP_CIPHER *ext = GetExternalSm4EcbMethod();
     return ext ? EVP_CIPHER_flags(ext) : 0;
 }
 
-int sm_sm4_cbc_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out, const unsigned char *in, size_t inl)
+int SmSm4CbcCipher(EVP_CIPHER_CTX *ctx, unsigned char *out, const unsigned char *in, size_t inl)
 {
-    const EVP_CIPHER *cipher = get_external_sm4_cbc_method();
+    const EVP_CIPHER *cipher = GetExternalSm4CbcMethod();
     if (!cipher) {
         return 0;
     }
@@ -140,9 +140,9 @@ int sm_sm4_cbc_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out, const unsigned ch
     return fn(ctx, out, in, inl);
 }
 
-int sm_sm4_ecb_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out, const unsigned char *in, size_t inl)
+int SmSm4EcbCipher(EVP_CIPHER_CTX *ctx, unsigned char *out, const unsigned char *in, size_t inl)
 {
-    const EVP_CIPHER *cipher = get_external_sm4_ecb_method();
+    const EVP_CIPHER *cipher = GetExternalSm4EcbMethod();
     if (!cipher) {
         return 0;
     }

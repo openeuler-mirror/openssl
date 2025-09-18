@@ -9,19 +9,19 @@ extern "C" {
 #endif
 
 /* SM3 property helpers (sourced from external method) */
-int sm_sm3_result_size(void);
-int sm_sm3_app_datasize(void);
-int sm_sm3_pkey_type(void);
+int SmSm3ResultSize(void);
+int SmSm3AppDatasize(void);
+int SmSm3PkeyType(void);
 
 /* OpenSSL EVP interface wrappers */
-int sm_sm3_init(EVP_MD_CTX *ctx);
-int sm_sm3_update(EVP_MD_CTX *ctx, const void *data, size_t count);
-int sm_sm3_final(EVP_MD_CTX *ctx, unsigned char *md);
-int sm_sm3_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from);
-int sm_sm3_cleanup(EVP_MD_CTX *ctx);
+int SmSm3Init(EVP_MD_CTX *ctx);
+int SmSm3Update(EVP_MD_CTX *ctx, const void *data, size_t count);
+int SmSm3Final(EVP_MD_CTX *ctx, unsigned char *md);
+int SmSm3Copy(EVP_MD_CTX *to, const EVP_MD_CTX *from);
+int SmSm3Cleanup(EVP_MD_CTX *ctx);
 
 /* Get external SM3 method */
-const EVP_MD *get_external_sm3_method(void);
+const EVP_MD *GetExternalSm3Method(void);
 
 #ifdef __cplusplus
 }

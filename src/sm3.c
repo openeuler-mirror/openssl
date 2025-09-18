@@ -3,38 +3,38 @@
 #include <openssl/crypto.h>
 
 /* Get external SM3 method */
-const EVP_MD *get_external_sm3_method(void)
+const EVP_MD *GetExternalSm3Method(void)
 {
     return EVP_sm3();
 }
 
-int sm_sm3_result_size(void)
+int SmSm3ResultSize(void)
 {
-    const EVP_MD *md = get_external_sm3_method();
-    if (!md) return 0;
+    const EVP_MD *md = GetExternalSm3Method();
+    if (!md) { return 0; }
     int sz = EVP_MD_size(md);
     return sz;
 }
 
-int sm_sm3_app_datasize(void)
+int SmSm3AppDatasize(void)
 {
-    const EVP_MD *md = get_external_sm3_method();
-    if (!md) return 0;
+    const EVP_MD *md = GetExternalSm3Method();
+    if (!md) { return 0; }
     int sz = EVP_MD_meth_get_app_datasize(md);
     return sz;
 }
 
-int sm_sm3_pkey_type(void)
+int SmSm3PkeyType(void)
 {
-    const EVP_MD *md = get_external_sm3_method();
-    if (!md) return NID_undef;
+    const EVP_MD *md = GetExternalSm3Method();
+    if (!md) { return NID_undef; }
     return EVP_MD_pkey_type(md);
 }
 
 /* OpenSSL EVP interface implementations */
-int sm_sm3_init(EVP_MD_CTX *ctx)
+int SmSm3Init(EVP_MD_CTX *ctx)
 {
-    const EVP_MD *md = get_external_sm3_method();
+    const EVP_MD *md = GetExternalSm3Method();
     if (!md) {
         return 0;
     }
@@ -45,9 +45,9 @@ int sm_sm3_init(EVP_MD_CTX *ctx)
     return fn(ctx);
 }
 
-int sm_sm3_update(EVP_MD_CTX *ctx, const void *data, size_t count)
+int SmSm3Update(EVP_MD_CTX *ctx, const void *data, size_t count)
 {
-    const EVP_MD *md = get_external_sm3_method();
+    const EVP_MD *md = GetExternalSm3Method();
     if (!md) {
         return 0;
     }
@@ -58,22 +58,22 @@ int sm_sm3_update(EVP_MD_CTX *ctx, const void *data, size_t count)
     return fn(ctx, data, count);
 }
 
-int sm_sm3_final(EVP_MD_CTX *ctx, unsigned char *md)
+int SmSm3Final(EVP_MD_CTX *ctx, unsigned char *md)
 {
-    const EVP_MD *md_method = get_external_sm3_method();
-    if (!md_method) {
+    const EVP_MD *mdMethod = GetExternalSm3Method();
+    if (!mdMethod) {
         return 0;
     }
-    int (*fn)(EVP_MD_CTX *, unsigned char *) = EVP_MD_meth_get_final(md_method);
+    int (*fn)(EVP_MD_CTX *, unsigned char *) = EVP_MD_meth_get_final(mdMethod);
     if (!fn) {
         return 1;
     }
     return fn(ctx, md);
 }
 
-int sm_sm3_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
+int SmSm3Copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
 {
-    const EVP_MD *md = get_external_sm3_method();
+    const EVP_MD *md = GetExternalSm3Method();
     if (!md) {
         return 0;
     }
@@ -84,9 +84,9 @@ int sm_sm3_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
     return fn(to, from);
 }
 
-int sm_sm3_cleanup(EVP_MD_CTX *ctx)
+int SmSm3Cleanup(EVP_MD_CTX *ctx)
 {
-    const EVP_MD *md = get_external_sm3_method();
+    const EVP_MD *md = GetExternalSm3Method();
     if (!md) {
         return 0;
     }

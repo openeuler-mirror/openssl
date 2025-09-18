@@ -11,28 +11,27 @@
 
 /* Define NIDs for SM algorithms */
 
-
-static const char *engine_sm_id = "sm_ce_engine";
-static const char *engine_sm_name = "SM3/SM4 Engine (Static Library)";
+static const char *engineSmId = "sm_ce_engine";
+static const char *engineSmName = "SM3/SM4 Engine (Static Library)";
 
 /* Dynamic method objects (opaque in OpenSSL 1.1.1) */
-static EVP_MD *g_sm3_md = NULL;
-static EVP_CIPHER *g_sm4_cbc = NULL;
-static EVP_CIPHER *g_sm4_ecb = NULL;
+static EVP_MD *gSm3Md = NULL;
+static EVP_CIPHER *gSm4Cbc = NULL;
+static EVP_CIPHER *gSm4Ecb = NULL;
 
 /* SM3 digest function */
-static int sm_digests(ENGINE *e, const EVP_MD **digest, const int **nids, int nid)
+static int SmDigests(ENGINE *e, const EVP_MD **digest, const int **nids, int nid)
 {
     (void)e;
-    static int sm3_nids[] = {NID_sm3, 0};
+    static int sm3Nids[] = {NID_sm3, 0};
     if (digest == NULL) {
-        *nids = sm3_nids;
+        *nids = sm3Nids;
         return 1;
     }
     switch (nid) {
         case NID_sm3:
             if (digest) {
-                *digest = g_sm3_md;
+                *digest = gSm3Md;
                 if (*digest == NULL) {
                     return 0;
                 }
@@ -45,18 +44,18 @@ static int sm_digests(ENGINE *e, const EVP_MD **digest, const int **nids, int ni
 }
 
 /* SM4 cipher function */
-static int sm_ciphers(ENGINE *e, const EVP_CIPHER **cipher, const int **nids, int nid)
+static int SmCiphers(ENGINE *e, const EVP_CIPHER **cipher, const int **nids, int nid)
 {
     (void)e;
-    static int sm4_nids[] = {NID_sm4_cbc, NID_sm4_ecb, 0};
+    static int sm4Nids[] = {NID_sm4_cbc, NID_sm4_ecb, 0};
     if (cipher == NULL) {
-        *nids = sm4_nids;
+        *nids = sm4Nids;
         return 2;
     }
     switch (nid) {
         case NID_sm4_cbc:
             if (cipher) {
-                *cipher = g_sm4_cbc;
+                *cipher = gSm4Cbc;
                 if (*cipher == NULL) {
                     return 0;
                 }
@@ -65,7 +64,7 @@ static int sm_ciphers(ENGINE *e, const EVP_CIPHER **cipher, const int **nids, in
             return 0;
         case NID_sm4_ecb:
             if (cipher) {
-                *cipher = g_sm4_ecb;
+                *cipher = gSm4Ecb;
                 if (*cipher == NULL) {
                     return 0;
                 }
@@ -77,72 +76,144 @@ static int sm_ciphers(ENGINE *e, const EVP_CIPHER **cipher, const int **nids, in
     }
 }
 
+/* Initialize SM3 digest method */
+static int InitSm3Digest(void)
+{
+    gSm3Md = EVP_MD_meth_new(NID_sm3, SmSm3PkeyType());
+    if (!gSm3Md) {
+        return 0;
+    }
+    if (!EVP_MD_meth_set_result_size(gSm3Md, SmSm3ResultSize())) {
+        return 0;
+    }
+    if (!EVP_MD_meth_set_app_datasize(gSm3Md, SmSm3AppDatasize())) {
+        return 0;
+    }
+    if (!EVP_MD_meth_set_init(gSm3Md, SmSm3Init)) {
+        return 0;
+    }
+    if (!EVP_MD_meth_set_update(gSm3Md, SmSm3Update)) {
+        return 0;
+    }
+    if (!EVP_MD_meth_set_final(gSm3Md, SmSm3Final)) {
+        return 0;
+    }
+    if (!EVP_MD_meth_set_copy(gSm3Md, SmSm3Copy)) {
+        return 0;
+    }
+    if (!EVP_MD_meth_set_cleanup(gSm3Md, SmSm3Cleanup)) {
+        return 0;
+    }
+    return 1;
+}
+
+/* Initialize SM4 CBC cipher method */
+static int InitSm4Cbc(void)
+{
+    gSm4Cbc = EVP_CIPHER_meth_new(NID_sm4_cbc, SmSm4BlockSizeCbc(), SmSm4KeyLength());
+    if (!gSm4Cbc) {
+        return 0;
+    }
+    if (!EVP_CIPHER_meth_set_iv_length(gSm4Cbc, SmSm4IvLengthCbc())) {
+        return 0;
+    }
+    if (!EVP_CIPHER_meth_set_flags(gSm4Cbc, SmSm4FlagsCbc())) {
+        return 0;
+    }
+    if (!EVP_CIPHER_meth_set_init(gSm4Cbc, SmSm4CbcInit)) {
+        return 0;
+    }
+    if (!EVP_CIPHER_meth_set_do_cipher(gSm4Cbc, SmSm4CbcCipher)) {
+        return 0;
+    }
+    if (!EVP_CIPHER_meth_set_cleanup(gSm4Cbc, SmSm4CbcCleanup)) {
+        return 0;
+    }
+    if (!EVP_CIPHER_meth_set_impl_ctx_size(gSm4Cbc, SmSm4CbcImplCtxSize())) {
+        return 0;
+    }
+    return 1;
+}
+
+/* Initialize SM4 ECB cipher method */
+static int InitSm4Ecb(void)
+{
+    gSm4Ecb = EVP_CIPHER_meth_new(NID_sm4_ecb, SmSm4BlockSizeEcb(), SmSm4KeyLength());
+    if (!gSm4Ecb) {
+        return 0;
+    }
+    if (!EVP_CIPHER_meth_set_iv_length(gSm4Ecb, SmSm4IvLengthEcb())) {
+        return 0;
+    }
+    if (!EVP_CIPHER_meth_set_flags(gSm4Ecb, SmSm4FlagsEcb())) {
+        return 0;
+    }
+    if (!EVP_CIPHER_meth_set_init(gSm4Ecb, SmSm4EcbInit)) {
+        return 0;
+    }
+    if (!EVP_CIPHER_meth_set_do_cipher(gSm4Ecb, SmSm4EcbCipher)) {
+        return 0;
+    }
+    if (!EVP_CIPHER_meth_set_cleanup(gSm4Ecb, SmSm4EcbCleanup)) {
+        return 0;
+    }
+    if (!EVP_CIPHER_meth_set_impl_ctx_size(gSm4Ecb, SmSm4EcbImplCtxSize())) {
+        return 0;
+    }
+    return 1;
+}
+
 /* Engine initialization */
-static int sm_init(ENGINE *e)
+static int SmInit(ENGINE *e)
 {
     (void)e;
-    /* Create SM3 method */
-    g_sm3_md = EVP_MD_meth_new(NID_sm3, sm_sm3_pkey_type());
-    if (!g_sm3_md) return 0;
-    if (!EVP_MD_meth_set_result_size(g_sm3_md, sm_sm3_result_size())) return 0;
-    if (!EVP_MD_meth_set_app_datasize(g_sm3_md, sm_sm3_app_datasize())) return 0;
-    if (!EVP_MD_meth_set_init(g_sm3_md, sm_sm3_init)) return 0;
-    if (!EVP_MD_meth_set_update(g_sm3_md, sm_sm3_update)) return 0;
-    if (!EVP_MD_meth_set_final(g_sm3_md, sm_sm3_final)) return 0;
-    if (!EVP_MD_meth_set_copy(g_sm3_md, sm_sm3_copy)) return 0;
-    if (!EVP_MD_meth_set_cleanup(g_sm3_md, sm_sm3_cleanup)) return 0;
 
-    /* Create SM4 CBC method (directly using sm_ helpers) */
-    g_sm4_cbc = EVP_CIPHER_meth_new(NID_sm4_cbc, sm_sm4_block_size_cbc(), sm_sm4_key_length());
-    if (!g_sm4_cbc) return 0;
-    if (!EVP_CIPHER_meth_set_iv_length(g_sm4_cbc, sm_sm4_iv_length_cbc())) return 0;
-    if (!EVP_CIPHER_meth_set_flags(g_sm4_cbc, sm_sm4_flags_cbc())) return 0;
-    if (!EVP_CIPHER_meth_set_init(g_sm4_cbc, sm_sm4_cbc_init)) return 0;
-    if (!EVP_CIPHER_meth_set_do_cipher(g_sm4_cbc, sm_sm4_cbc_cipher)) return 0;
-    if (!EVP_CIPHER_meth_set_cleanup(g_sm4_cbc, sm_sm4_cbc_cleanup)) return 0;
-    if (!EVP_CIPHER_meth_set_impl_ctx_size(g_sm4_cbc, sm_sm4_cbc_impl_ctx_size())) return 0;
+    /* Initialize SM3 digest */
+    if (!InitSm3Digest()) {
+        return 0;
+    }
 
-    /* Create SM4 ECB method (directly using sm_ helpers) */
-    g_sm4_ecb = EVP_CIPHER_meth_new(NID_sm4_ecb, sm_sm4_block_size_ecb(), sm_sm4_key_length());
-    if (!g_sm4_ecb) return 0;
-    if (!EVP_CIPHER_meth_set_iv_length(g_sm4_ecb, sm_sm4_iv_length_ecb())) return 0;
-    if (!EVP_CIPHER_meth_set_flags(g_sm4_ecb, sm_sm4_flags_ecb())) return 0;
-    if (!EVP_CIPHER_meth_set_init(g_sm4_ecb, sm_sm4_ecb_init)) return 0;
-    if (!EVP_CIPHER_meth_set_do_cipher(g_sm4_ecb, sm_sm4_ecb_cipher)) return 0;
-    if (!EVP_CIPHER_meth_set_cleanup(g_sm4_ecb, sm_sm4_ecb_cleanup)) return 0;
-    if (!EVP_CIPHER_meth_set_impl_ctx_size(g_sm4_ecb, sm_sm4_ecb_impl_ctx_size())) return 0;
+    /* Initialize SM4 CBC cipher */
+    if (!InitSm4Cbc()) {
+        return 0;
+    }
+
+    /* Initialize SM4 ECB cipher */
+    if (!InitSm4Ecb()) {
+        return 0;
+    }
 
     return 1;
 }
 
 /* Engine cleanup */
-static int sm_finish(ENGINE *e)
+static int SmFinish(ENGINE *e)
 {
     (void)e;
-    if (g_sm3_md) {
-        EVP_MD_meth_free(g_sm3_md);
-        g_sm3_md = NULL;
+    if (gSm3Md) {
+        EVP_MD_meth_free(gSm3Md);
+        gSm3Md = NULL;
     }
-    if (g_sm4_cbc) {
-        EVP_CIPHER_meth_free(g_sm4_cbc);
-        g_sm4_cbc = NULL;
+    if (gSm4Cbc) {
+        EVP_CIPHER_meth_free(gSm4Cbc);
+        gSm4Cbc = NULL;
     }
-    if (g_sm4_ecb) {
-        EVP_CIPHER_meth_free(g_sm4_ecb);
-        g_sm4_ecb = NULL;
+    if (gSm4Ecb) {
+        EVP_CIPHER_meth_free(gSm4Ecb);
+        gSm4Ecb = NULL;
     }
     return 1;
 }
 
 /* Engine destroy */
-static int sm_destroy(ENGINE *e)
+static int SmDestroy(ENGINE *e)
 {
     (void)e;
     return 1;
 }
 
 /* Engine control */
-static int sm_ctrl(ENGINE *e, int cmd, long i, void *p, void (*f)(void))
+static int SmCtrl(ENGINE *e, int cmd, long i, void *p, void (*f)(void))
 {
     (void)e;
     (void)i;
@@ -157,24 +228,24 @@ static int sm_ctrl(ENGINE *e, int cmd, long i, void *p, void (*f)(void))
 }
 
 /* Engine command definitions */
-static const ENGINE_CMD_DEFN sm_cmd_defns[] = {
+static const ENGINE_CMD_DEFN smCmdDefns[] = {
     {0, NULL, NULL, 0}
 };
 
 /* Engine implementation */
 
 /* Engine bind function */
-static int sm_bind(ENGINE *e, const char *id)
+static int SmBind(ENGINE *e, const char *id)
 {
-    if (!ENGINE_set_id(e, engine_sm_id) ||
-        !ENGINE_set_name(e, engine_sm_name) ||
-        !ENGINE_set_init_function(e, sm_init) ||
-        !ENGINE_set_finish_function(e, sm_finish) ||
-        !ENGINE_set_destroy_function(e, sm_destroy) ||
-        !ENGINE_set_ctrl_function(e, sm_ctrl) ||
-        !ENGINE_set_cmd_defns(e, sm_cmd_defns) ||
-        !ENGINE_set_digests(e, sm_digests) ||
-        !ENGINE_set_ciphers(e, sm_ciphers)) {
+    if (!ENGINE_set_id(e, engineSmId) ||
+        !ENGINE_set_name(e, engineSmName) ||
+        !ENGINE_set_init_function(e, SmInit) ||
+        !ENGINE_set_finish_function(e, SmFinish) ||
+        !ENGINE_set_destroy_function(e, SmDestroy) ||
+        !ENGINE_set_ctrl_function(e, SmCtrl) ||
+        !ENGINE_set_cmd_defns(e, smCmdDefns) ||
+        !ENGINE_set_digests(e, SmDigests) ||
+        !ENGINE_set_ciphers(e, SmCiphers)) {
         return 0;
     }
     return 1;
@@ -182,4 +253,4 @@ static int sm_bind(ENGINE *e, const char *id)
 
 /* Register the engine */
 IMPLEMENT_DYNAMIC_CHECK_FN()
-IMPLEMENT_DYNAMIC_BIND_FN(sm_bind)
+IMPLEMENT_DYNAMIC_BIND_FN(SmBind)
