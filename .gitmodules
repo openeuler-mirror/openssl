@@ -1,0 +1,3 @@
+[submodule "3rd/openssl"]
+	path = 3rd/openssl
+	url = https://gitee.com/openeuler/openssl.git
