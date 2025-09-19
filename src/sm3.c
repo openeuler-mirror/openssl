@@ -31,6 +31,22 @@ int SmSm3PkeyType(void) {
     return EVP_MD_pkey_type(md);
 }
 
+int SmSm3Flags(void) {
+    const EVP_MD *md = GetExternalSm3Method();
+    if (!md) {
+        return 0;
+    }
+    return EVP_MD_flags(md);
+}
+
+int SmSm3BlockSize(void) {
+    const EVP_MD *md = GetExternalSm3Method();
+    if (!md) {
+        return 0;
+    }
+    return EVP_MD_block_size(md);
+}
+
 /* OpenSSL EVP interface implementations */
 int SmSm3Init(EVP_MD_CTX *ctx) {
     const EVP_MD *md = GetExternalSm3Method();
@@ -90,4 +106,16 @@ int SmSm3Cleanup(EVP_MD_CTX *ctx) {
         return 1;
     }
     return fn(ctx);
+}
+
+int SmSm3MdCtrl(EVP_MD_CTX *ctx, int cmd, int p1, void *p2) {
+    const EVP_MD *md = GetExternalSm3Method();
+    if (!md) {
+        return 0;
+    }
+    int (*fn)(EVP_MD_CTX *, int, int, void *) = EVP_MD_meth_get_ctrl(md);
+    if (!fn) {
+        return 1;
+    }
+    return fn(ctx, cmd, p1, p2);
 }

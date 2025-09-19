@@ -80,6 +80,78 @@ int SmSm4EcbCleanup(EVP_CIPHER_CTX *ctx) {
     return fn(ctx);
 }
 
+int SmSm4CbcSetAsn1Params(EVP_CIPHER_CTX *ctx, ASN1_TYPE *asn1Type) {
+    const EVP_CIPHER *cipher = GetExternalSm4CbcMethod();
+    if (!cipher) {
+        return 0;
+    }
+    int (*fn)(EVP_CIPHER_CTX *, ASN1_TYPE *) = EVP_CIPHER_meth_get_set_asn1_params(cipher);
+    if (!fn) {
+        return 1;
+    }
+    return fn(ctx, asn1Type);
+}
+
+int SmSm4CbcGetAsn1Params(EVP_CIPHER_CTX *ctx, ASN1_TYPE *asn1Type) {
+    const EVP_CIPHER *cipher = GetExternalSm4CbcMethod();
+    if (!cipher) {
+        return 0;
+    }
+    int (*fn)(EVP_CIPHER_CTX *, ASN1_TYPE *) = EVP_CIPHER_meth_get_get_asn1_params(cipher);
+    if (!fn) {
+        return 1;
+    }
+    return fn(ctx, asn1Type);
+}
+
+int SmSm4EcbSetAsn1Params(EVP_CIPHER_CTX *ctx, ASN1_TYPE *asn1Type) {
+    const EVP_CIPHER *cipher = GetExternalSm4EcbMethod();
+    if (!cipher) {
+        return 0;
+    }
+    int (*fn)(EVP_CIPHER_CTX *, ASN1_TYPE *) = EVP_CIPHER_meth_get_set_asn1_params(cipher);
+    if (!fn) {
+        return 1;
+    }
+    return fn(ctx, asn1Type);
+}
+
+int SmSm4EcbGetAsn1Params(EVP_CIPHER_CTX *ctx, ASN1_TYPE *asn1Type) {
+    const EVP_CIPHER *cipher = GetExternalSm4EcbMethod();
+    if (!cipher) {
+        return 0;
+    }
+    int (*fn)(EVP_CIPHER_CTX *, ASN1_TYPE *) = EVP_CIPHER_meth_get_get_asn1_params(cipher);
+    if (!fn) {
+        return 1;
+    }
+    return fn(ctx, asn1Type);
+}
+
+int SmSm4CbcCtrl(EVP_CIPHER_CTX *ctx, int type, int arg, void *ptr) {
+    const EVP_CIPHER *cipher = GetExternalSm4CbcMethod();
+    if (!cipher) {
+        return 0;
+    }
+    int (*fn)(EVP_CIPHER_CTX *, int, int, void *) = EVP_CIPHER_meth_get_ctrl(cipher);
+    if (!fn) {
+        return 1;
+    }
+    return fn(ctx, type, arg, ptr);
+}
+
+int SmSm4EcbCtrl(EVP_CIPHER_CTX *ctx, int type, int arg, void *ptr) {
+    const EVP_CIPHER *cipher = GetExternalSm4EcbMethod();
+    if (!cipher) {
+        return 0;
+    }
+    int (*fn)(EVP_CIPHER_CTX *, int, int, void *) = EVP_CIPHER_meth_get_ctrl(cipher);
+    if (!fn) {
+        return 1;
+    }
+    return fn(ctx, type, arg, ptr);
+}
+
 int SmSm4BlockSizeCbc(void) {
     const EVP_CIPHER *ext = GetExternalSm4CbcMethod();
     return ext ? EVP_CIPHER_block_size(ext) : 0;

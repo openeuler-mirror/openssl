@@ -85,6 +85,12 @@ static int InitSm3Digest(void) {
     if (!EVP_MD_meth_set_result_size(gSm3Md, SmSm3ResultSize())) {
         return 0;
     }
+    if (!EVP_MD_meth_set_flags(gSm3Md, SmSm3Flags())) {
+        return 0;
+    }
+    if (!EVP_MD_meth_set_input_blocksize(gSm3Md, SmSm3BlockSize())) {
+        return 0;
+    }
     if (!EVP_MD_meth_set_app_datasize(gSm3Md, SmSm3AppDatasize())) {
         return 0;
     }
@@ -101,6 +107,9 @@ static int InitSm3Digest(void) {
         return 0;
     }
     if (!EVP_MD_meth_set_cleanup(gSm3Md, SmSm3Cleanup)) {
+        return 0;
+    }
+    if (!EVP_MD_meth_set_ctrl(gSm3Md, SmSm3MdCtrl)) {
         return 0;
     }
     return 1;
@@ -126,6 +135,15 @@ static int InitSm4Cbc(void) {
         return 0;
     }
     if (!EVP_CIPHER_meth_set_cleanup(gSm4Cbc, SmSm4CbcCleanup)) {
+        return 0;
+    }
+    if (!EVP_CIPHER_meth_set_ctrl(gSm4Cbc, SmSm4CbcCtrl)) {
+        return 0;
+    }
+    if (!EVP_CIPHER_meth_set_set_asn1_params(gSm4Cbc, SmSm4CbcSetAsn1Params)) {
+        return 0;
+    }
+    if (!EVP_CIPHER_meth_set_get_asn1_params(gSm4Cbc, SmSm4CbcGetAsn1Params)) {
         return 0;
     }
     if (!EVP_CIPHER_meth_set_impl_ctx_size(gSm4Cbc, SmSm4CbcImplCtxSize())) {
@@ -154,6 +172,15 @@ static int InitSm4Ecb(void) {
         return 0;
     }
     if (!EVP_CIPHER_meth_set_cleanup(gSm4Ecb, SmSm4EcbCleanup)) {
+        return 0;
+    }
+    if (!EVP_CIPHER_meth_set_ctrl(gSm4Ecb, SmSm4EcbCtrl)) {
+        return 0;
+    }
+    if (!EVP_CIPHER_meth_set_set_asn1_params(gSm4Ecb, SmSm4EcbSetAsn1Params)) {
+        return 0;
+    }
+    if (!EVP_CIPHER_meth_set_get_asn1_params(gSm4Ecb, SmSm4EcbGetAsn1Params)) {
         return 0;
     }
     if (!EVP_CIPHER_meth_set_impl_ctx_size(gSm4Ecb, SmSm4EcbImplCtxSize())) {
@@ -187,6 +214,12 @@ static int SmInit(ENGINE *e) {
 /* Engine cleanup */
 static int SmFinish(ENGINE *e) {
     (void)e;
+    return 1;
+}
+
+/* Engine destroy */
+static int SmDestroy(ENGINE *e) {
+    (void)e;
     if (gSm3Md) {
         EVP_MD_meth_free(gSm3Md);
         gSm3Md = NULL;
@@ -199,12 +232,6 @@ static int SmFinish(ENGINE *e) {
         EVP_CIPHER_meth_free(gSm4Ecb);
         gSm4Ecb = NULL;
     }
-    return 1;
-}
-
-/* Engine destroy */
-static int SmDestroy(ENGINE *e) {
-    (void)e;
     return 1;
 }
 

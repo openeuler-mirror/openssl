@@ -3,6 +3,7 @@
 
 #include <openssl/evp.h>
 #include <openssl/engine.h>
+#include <openssl/asn1.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -27,6 +28,13 @@ int SmSm4EcbCleanup(EVP_CIPHER_CTX *ctx);
 int SmSm4CbcImplCtxSize(void);
 int SmSm4EcbImplCtxSize(void);
 
+/* SM4 ASN.1 and ctrl wrappers */
+int SmSm4CbcSetAsn1Params(EVP_CIPHER_CTX *ctx, ASN1_TYPE *asn1Type);
+int SmSm4CbcGetAsn1Params(EVP_CIPHER_CTX *ctx, ASN1_TYPE *asn1Type);
+int SmSm4EcbSetAsn1Params(EVP_CIPHER_CTX *ctx, ASN1_TYPE *asn1Type);
+int SmSm4EcbGetAsn1Params(EVP_CIPHER_CTX *ctx, ASN1_TYPE *asn1Type);
+int SmSm4CbcCtrl(EVP_CIPHER_CTX *ctx, int type, int arg, void *ptr);
+int SmSm4EcbCtrl(EVP_CIPHER_CTX *ctx, int type, int arg, void *ptr);
 /* SM4 property helpers (read from external method) */
 int SmSm4BlockSizeCbc(void);
 int SmSm4BlockSizeEcb(void);
