@@ -16,6 +16,11 @@ set(ENGINE_HEADERS
 # Create the engine library
 add_library(sm_engine ${ENGINE_SOURCES})
 
+# If OpenSSL needs to be built first, add dependency
+if(OPENSSL_BUILD_REQUIRED)
+    add_dependencies(sm_engine openssl_external)
+endif()
+
 # Set library properties
 set_target_properties(sm_engine PROPERTIES
     VERSION ${PROJECT_VERSION}

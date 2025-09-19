@@ -10,6 +10,11 @@ include_directories(
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/example.c)
     add_executable(example example.c)
 
+    # If OpenSSL needs to be built first, add dependency
+    if(OPENSSL_BUILD_REQUIRED)
+        add_dependencies(example openssl_external)
+    endif()
+
     # Link with the engine and OpenSSL
     target_link_libraries(example
         sm_engine
@@ -39,37 +44,17 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/example.c)
     )
 endif()
 
-# Performance test program
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/performance.c)
-    add_executable(performance performance.c)
-
-    target_link_libraries(performance
-        sm_engine
-        ${OPENSSL_CRYPTO_LIBRARY}
-    )
-
-    if(UNIX AND NOT APPLE)
-        target_link_libraries(performance dl pthread)
-    endif()
-
-    set_target_properties(performance PROPERTIES
-        INSTALL_RPATH_USE_LINK_PATH TRUE
-        BUILD_RPATH "${CMAKE_BINARY_DIR}/lib"
-    )
-
-    add_test(NAME performance_test
-        COMMAND performance
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    )
-
-    set_tests_properties(performance_test PROPERTIES
-        ENVIRONMENT "LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/lib:$ENV{LD_LIBRARY_PATH}"
-    )
-endif()
+# Performance testing removed - use OpenSSL speed command instead
+# Example: openssl speed -engine sm_ce_engine sm3 sm4-ecb sm4-cbc
 
 # Quick test program
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/quick_test.c)
     add_executable(quick_test quick_test.c)
+
+    # If OpenSSL needs to be built first, add dependency
+    if(OPENSSL_BUILD_REQUIRED)
+        add_dependencies(quick_test openssl_external)
+    endif()
 
     target_link_libraries(quick_test
         sm_engine
@@ -89,6 +74,11 @@ endif()
 # AddressSanitizer test program
 if(ENABLE_ASAN AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test_asan.c)
     add_executable(test_asan test_asan.c)
+
+    # If OpenSSL needs to be built first, add dependency
+    if(OPENSSL_BUILD_REQUIRED)
+        add_dependencies(test_asan openssl_external)
+    endif()
 
     # Include directories
     target_include_directories(test_asan PRIVATE

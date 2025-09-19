@@ -244,5 +244,13 @@ static int SmBind(ENGINE *e, const char *id) {
 }
 
 /* Register the engine */
+/* Export v_check symbol for version compatibility */
+#ifdef __GNUC__
+__attribute__((visibility("default")))
+#endif
 IMPLEMENT_DYNAMIC_CHECK_FN()
+/* Export bind_engine symbol for dynamic loading */
+#ifdef __GNUC__
+__attribute__((visibility("default")))
+#endif
 IMPLEMENT_DYNAMIC_BIND_FN(SmBind)

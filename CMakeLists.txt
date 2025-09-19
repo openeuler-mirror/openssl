@@ -1,9 +1,13 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.11)  # 3.11 required for FetchContent
 project(sm_engine VERSION 1.0.0 LANGUAGES C)
 
 # Set C standard
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+
+# Include required modules
+include(ExternalProject)
+include(ProcessorCount)
 
 # Options
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
@@ -12,6 +16,7 @@ option(BUILD_EXAMPLES "Build example programs" ON)
 option(ENABLE_DEBUG "Enable debug build" OFF)
 option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(ENABLE_VALGRIND "Enable Valgrind memory checks" OFF)
+option(AUTO_BUILD_OPENSSL "Automatically build OpenSSL if not found" ON)
 
 # Set default build type if not specified
 if(NOT CMAKE_BUILD_TYPE)
@@ -67,9 +72,43 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
+# Determine number of cores for parallel build
+ProcessorCount(NPROC)
+if(NPROC EQUAL 0)
+    set(NPROC 4)
+endif()
+
+# Git submodule auto-initialization
+find_package(Git QUIET)
+if(GIT_FOUND)
+    message(STATUS "Checking git submodules...")
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} submodule status 3rd/openssl
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_SUBMODULE_STATUS
+        RESULT_VARIABLE GIT_SUBMOD_RESULT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+
+    # Check if submodule needs initialization (status starts with -)
+    if(GIT_SUBMOD_RESULT OR "${GIT_SUBMODULE_STATUS}" MATCHES "^-")
+        message(STATUS "Initializing git submodule 3rd/openssl...")
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} submodule update --init 3rd/openssl
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            RESULT_VARIABLE GIT_SUBMOD_RESULT
+        )
+        if(GIT_SUBMOD_RESULT)
+            message(WARNING "Failed to initialize git submodule. Will attempt to continue anyway.")
+        endif()
+    endif()
+endif()
+
 # OpenSSL configuration - use the one from 3rd/openssl
 # IMPORTANT: We explicitly use the OpenSSL from 3rd/openssl, NOT the system OpenSSL
 set(OPENSSL_ROOT_DIR "${CMAKE_SOURCE_DIR}/3rd/openssl" CACHE PATH "Path to OpenSSL root directory")
+set(OPENSSL_BUILD_DIR "${CMAKE_BINARY_DIR}/openssl-build" CACHE PATH "OpenSSL build directory")
+set(OPENSSL_INSTALL_DIR "${CMAKE_BINARY_DIR}/openssl-install" CACHE PATH "OpenSSL install directory")
 
 # Prevent CMake from finding system OpenSSL
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY NEVER)
@@ -78,28 +117,96 @@ unset(OPENSSL_INCLUDE_DIR CACHE)
 unset(OPENSSL_SSL_LIBRARY CACHE)
 unset(OPENSSL_CRYPTO_LIBRARY CACHE)
 
-# Check if OpenSSL is built
-if(EXISTS "${OPENSSL_ROOT_DIR}/build/lib/libcrypto.a")
-    set(OPENSSL_CRYPTO_LIBRARY "${OPENSSL_ROOT_DIR}/build/lib/libcrypto.a" CACHE FILEPATH "Path to OpenSSL crypto library" FORCE)
-    set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/build/include" CACHE PATH "Path to OpenSSL include directory" FORCE)
-elseif(EXISTS "${OPENSSL_ROOT_DIR}/libcrypto.a")
-    set(OPENSSL_CRYPTO_LIBRARY "${OPENSSL_ROOT_DIR}/libcrypto.a" CACHE FILEPATH "Path to OpenSSL crypto library" FORCE)
-    set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/include" CACHE PATH "Path to OpenSSL include directory" FORCE)
-else()
-    message(FATAL_ERROR "OpenSSL libcrypto.a not found. Please build OpenSSL first:\n"
+# Function to check if OpenSSL is built
+function(check_openssl_built)
+    if(EXISTS "${OPENSSL_INSTALL_DIR}/lib/libcrypto.a")
+        set(OPENSSL_FOUND TRUE PARENT_SCOPE)
+        set(OPENSSL_CRYPTO_LIBRARY "${OPENSSL_INSTALL_DIR}/lib/libcrypto.a" CACHE FILEPATH "Path to OpenSSL crypto library" FORCE)
+        set(OPENSSL_INCLUDE_DIR "${OPENSSL_INSTALL_DIR}/include" CACHE PATH "Path to OpenSSL include directory" FORCE)
+    elseif(EXISTS "${OPENSSL_ROOT_DIR}/build/lib/libcrypto.a")
+        set(OPENSSL_FOUND TRUE PARENT_SCOPE)
+        set(OPENSSL_CRYPTO_LIBRARY "${OPENSSL_ROOT_DIR}/build/lib/libcrypto.a" CACHE FILEPATH "Path to OpenSSL crypto library" FORCE)
+        set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/build/include" CACHE PATH "Path to OpenSSL include directory" FORCE)
+    elseif(EXISTS "${OPENSSL_ROOT_DIR}/libcrypto.a")
+        set(OPENSSL_FOUND TRUE PARENT_SCOPE)
+        set(OPENSSL_CRYPTO_LIBRARY "${OPENSSL_ROOT_DIR}/libcrypto.a" CACHE FILEPATH "Path to OpenSSL crypto library" FORCE)
+        set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/include" CACHE PATH "Path to OpenSSL include directory" FORCE)
+    else()
+        set(OPENSSL_FOUND FALSE PARENT_SCOPE)
+    endif()
+endfunction()
+
+# Check if OpenSSL is already built
+check_openssl_built()
+
+if(NOT OPENSSL_FOUND AND AUTO_BUILD_OPENSSL)
+    message(STATUS "OpenSSL not found. Building OpenSSL as external project...")
+
+    # Check if OpenSSL source exists
+    if(NOT EXISTS "${OPENSSL_ROOT_DIR}/Configure")
+        message(FATAL_ERROR "OpenSSL source not found at ${OPENSSL_ROOT_DIR}. "
+                           "Please ensure git submodule is initialized:\n"
+                           "  git submodule update --init 3rd/openssl")
+    endif()
+
+    # Configure OpenSSL build command based on platform
+    if(APPLE)
+        # Detect architecture on macOS
+        execute_process(
+            COMMAND uname -m
+            OUTPUT_VARIABLE APPLE_ARCH
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        if(APPLE_ARCH STREQUAL "arm64")
+            set(OPENSSL_CONFIGURE_COMMAND ./Configure darwin64-arm64-cc)
+        else()
+            set(OPENSSL_CONFIGURE_COMMAND ./Configure darwin64-x86_64-cc)
+        endif()
+        message(STATUS "Detected macOS architecture: ${APPLE_ARCH}")
+    else()
+        set(OPENSSL_CONFIGURE_COMMAND ./config)
+    endif()
+
+    # Add OpenSSL as external project (OpenSSL requires in-source build)
+    ExternalProject_Add(
+        openssl_external
+        SOURCE_DIR ${OPENSSL_ROOT_DIR}
+        INSTALL_DIR ${OPENSSL_INSTALL_DIR}
+        CONFIGURE_COMMAND ${CMAKE_COMMAND} -E chdir ${OPENSSL_ROOT_DIR}
+            ${OPENSSL_CONFIGURE_COMMAND}
+            --prefix=${OPENSSL_INSTALL_DIR}
+            no-shared
+            no-tests
+        BUILD_COMMAND ${CMAKE_COMMAND} -E chdir ${OPENSSL_ROOT_DIR}
+            make -j${NPROC}
+        BUILD_IN_SOURCE 1
+        INSTALL_COMMAND ${CMAKE_COMMAND} -E chdir ${OPENSSL_ROOT_DIR}
+            make install_sw
+        BUILD_BYPRODUCTS
+            ${OPENSSL_INSTALL_DIR}/lib/libcrypto.a
+            ${OPENSSL_INSTALL_DIR}/include/openssl/engine.h
+    )
+
+    # Set OpenSSL paths after build
+    set(OPENSSL_CRYPTO_LIBRARY "${OPENSSL_INSTALL_DIR}/lib/libcrypto.a" CACHE FILEPATH "Path to OpenSSL crypto library" FORCE)
+    set(OPENSSL_INCLUDE_DIR "${OPENSSL_INSTALL_DIR}/include" CACHE PATH "Path to OpenSSL include directory" FORCE)
+    set(OPENSSL_BUILD_REQUIRED TRUE)
+
+    message(STATUS "OpenSSL will be built to: ${OPENSSL_INSTALL_DIR}")
+    message(STATUS "Using ${NPROC} parallel jobs for OpenSSL build")
+elseif(NOT OPENSSL_FOUND)
+    message(FATAL_ERROR "OpenSSL libcrypto.a not found and AUTO_BUILD_OPENSSL is disabled.\n"
+                        "Either enable AUTO_BUILD_OPENSSL or build OpenSSL manually:\n"
                         "  cd ${OPENSSL_ROOT_DIR}\n"
                         "  ./config --prefix=\${PWD}/build\n"
                         "  make -j4\n"
                         "  make install_sw")
+else()
+    message(STATUS "Found existing OpenSSL:")
+    message(STATUS "  Include: ${OPENSSL_INCLUDE_DIR}")
+    message(STATUS "  Library: ${OPENSSL_CRYPTO_LIBRARY}")
+    set(OPENSSL_BUILD_REQUIRED FALSE)
 endif()
-
-# Check for OpenSSL headers
-if(NOT EXISTS "${OPENSSL_INCLUDE_DIR}/openssl/engine.h")
-    message(FATAL_ERROR "OpenSSL headers not found at ${OPENSSL_INCLUDE_DIR}")
-endif()
-
-message(STATUS "OpenSSL include: ${OPENSSL_INCLUDE_DIR}")
-message(STATUS "OpenSSL crypto library: ${OPENSSL_CRYPTO_LIBRARY}")
 
 # Platform-specific symbol export settings
 if(APPLE)

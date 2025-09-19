@@ -1,0 +1,19 @@
+# OpenSSL Engine Configuration for Linux Local Build Testing
+# This config is for testing the locally built engine on Linux
+
+# Load the SM engine
+openssl_conf = openssl_init
+
+[openssl_init]
+engines = engine_section
+
+[engine_section]
+sm_ce_engine = sm_section
+
+[sm_section]
+engine_id = sm_ce_engine
+# Path relative to build directory on Linux
+dynamic_path = ./lib/libsm_engine.so
+init = 1
+# 让引擎接管摘要和对称加密算法
+default_algorithms = DIGESTS,CIPHERS

@@ -22,9 +22,66 @@
 
 ## 编译与使用
 
-### 一键构建（推荐）
+### 方式一：CMake 构建（推荐）
 
-使用 `build.sh` 脚本统一构建引擎与示例。支持为“引擎编译/链接”和“示例编译/链接”分别指定 OpenSSL 的头文件与库路径。
+使用 CMake 可以自动管理依赖和构建流程，支持自动构建 OpenSSL（如果本地没有）。
+
+#### 基本构建步骤：
+
+```bash
+# 1. 创建构建目录
+mkdir build && cd build
+
+# 2. 配置项目（自动检测并构建 OpenSSL）
+cmake ..
+
+# 3. 编译
+make -j
+
+#### CMake 配置选项：
+
+```bash
+# 指定构建类型（Debug/Release）
+cmake .. -DCMAKE_BUILD_TYPE=Release
+
+# 启用/禁用测试
+cmake .. -DBUILD_TESTING=ON
+
+# 启用 AddressSanitizer（内存检测）
+cmake .. -DENABLE_ASAN=ON
+make run_asan_tests
+
+# 启用 Valgrind 支持（内存泄漏检测）
+cmake .. -DENABLE_VALGRIND=ON
+make run_valgrind_tests
+
+# 指定安装路径
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local
+
+# 安装引擎
+sudo make install
+```
+
+#### 性能测试：
+
+```bash
+# 使用 OpenSSL speed 命令进行性能测试
+./openssl_speed_test.sh
+
+# 快速测试（仅运行1秒）
+./build/openssl-install/bin/openssl speed -engine sm_ce_engine -evp sm3 -seconds 1
+./build/openssl-install/bin/openssl speed -engine sm_ce_engine -evp sm4-ecb -seconds 1
+./build/openssl-install/bin/openssl speed -engine sm_ce_engine -evp sm4-cbc -seconds 1
+```
+
+#### CMake 输出产物：
+- 引擎共享库：`build/lib/libsm_engine.so` (Linux) 或 `build/lib/libsm_engine.dylib` (macOS)
+- 测试程序：`build/bin/example`, `build/bin/quick_test`
+- OpenSSL（如自动构建）：`build/openssl-install/`
+
+### 方式二：Shell 脚本构建
+
+使用 `build.sh` 脚本统一构建引擎与示例。支持为"引擎编译/链接"和"示例编译/链接"分别指定 OpenSSL 的头文件与库路径。
 
 常用参数：
 - `-oi, --openssl-include DIR` 引擎编译头文件目录（可重复）
@@ -114,13 +171,38 @@ default_algorithms = DIGESTS,CIPHERS
 
 - OpenSSL 1.1.1 或更高版本（示例使用 1.1.1 分支）
 - GCC/Clang 编译器
-- Make 工具（可选）
+- CMake 3.10+ （使用 CMake 构建时需要）
+- Make 工具
+
+## 测试与验证
+
+### 功能测试
+```bash
+# 运行基础功能测试
+cd build
+./bin/example        # SM3/SM4 基础功能测试
+./bin/quick_test     # 快速验证测试
+```
+
+### 性能测试
+```bash
+# 完整性能测试
+./openssl_speed_test.sh
+
+```
+
+### 单独的引擎加载测试
+```bash
+# 测试引擎是否正确加载
+./test_engine.sh
+```
 
 ## 故障排除
 
 - 链接报 `unknown option --version-script`：macOS 上请使用 `exported.symbols` 方案（脚本已自动处理）。
 - 运行找不到引擎：检查 `openssl.cnf` 的 `dynamic_path` 是否正确、引擎是否安装到系统默认目录。
 - `NID_sm4_gcm` 未定义：当前示例未启用 GCM，启用前需确保外部 OpenSSL 提供该算法及符号。
+- CMake 找不到 OpenSSL：CMake 会自动从 git submodule 构建 OpenSSL 1.1.1，确保执行了 `git submodule update --init`。
 
 ## 许可证
 

@@ -112,8 +112,10 @@ static void test_sm4(const char *cipher_name)
     unsigned char ciphertext[TEST_SIZE + 32];
     unsigned char decrypted[TEST_SIZE + 32];
     int outlen, tmplen;
-    double start, elapsed;
     int i;
+
+    /* Move timing variables to avoid stack corruption */
+    static double start_time, elapsed_time;
 
     printf("\n%s 测试:\n", cipher_name);
     printf("----------\n");
@@ -158,13 +160,15 @@ static void test_sm4(const char *cipher_name)
     }
 
     /* 性能测试 */
-    start = get_time();
+    int actual_iterations = TEST_ITERATIONS;
+    start_time = get_time();
     for (i = 0; i < TEST_ITERATIONS && !g_interrupted; i++) {
+        int out_len, tmp_len;  /* Use fresh variables for each iteration */
         EVP_EncryptInit_ex(ctx, cipher, NULL, key, iv);
-        EVP_EncryptUpdate(ctx, ciphertext, &outlen, plaintext, sizeof(plaintext));
-        EVP_EncryptFinal_ex(ctx, ciphertext + outlen, &tmplen);
+        EVP_EncryptUpdate(ctx, ciphertext, &out_len, plaintext, sizeof(plaintext));
+        EVP_EncryptFinal_ex(ctx, ciphertext + out_len, &tmp_len);
     }
-    elapsed = get_time() - start;
+    elapsed_time = get_time() - start_time;
 
     if (g_interrupted) {
         printf("  测试被中断\n");
@@ -172,8 +176,28 @@ static void test_sm4(const char *cipher_name)
         return;
     }
 
-    printf("  性能: %d 次/秒 (1KB数据)\n", (int)(TEST_ITERATIONS / elapsed));
-    printf("  速度: %.2f MB/s\n", (TEST_ITERATIONS * TEST_SIZE / elapsed) / (1024.0 * 1024.0));
+    /* Handle very fast operations - if elapsed < 1ms, run more iterations */
+    if (elapsed_time < 0.001 && !g_interrupted) {
+        actual_iterations = TEST_ITERATIONS * 100;  /* 1 million iterations */
+        start_time = get_time();
+        for (i = 0; i < actual_iterations && !g_interrupted; i++) {
+            int out_len, tmp_len;  /* Use fresh variables for each iteration */
+            EVP_EncryptInit_ex(ctx, cipher, NULL, key, iv);
+            EVP_EncryptUpdate(ctx, ciphertext, &out_len, plaintext, sizeof(plaintext));
+            EVP_EncryptFinal_ex(ctx, ciphertext + out_len, &tmp_len);
+        }
+        elapsed_time = get_time() - start_time;
+    }
+
+    if (elapsed_time > 0.0) {
+        double ops_per_sec = actual_iterations / elapsed_time;
+        double mb_per_sec = (actual_iterations * TEST_SIZE / elapsed_time) / (1024.0 * 1024.0);
+        printf("  性能: %.0f 次/秒 (1KB数据)\n", ops_per_sec);
+        printf("  速度: %.2f MB/s\n", mb_per_sec);
+    } else {
+        printf("  性能: 无法测量 (操作过快)\n");
+        printf("  速度: 无法测量 MB/s\n");
+    }
 
     EVP_CIPHER_CTX_free(ctx);
 }
