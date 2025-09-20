@@ -29,13 +29,16 @@
 #### 基本构建步骤：
 
 ```bash
-# 1. 创建构建目录
+# 1. 初始化并拉取 OpenSSL 子模块（如果尚未拉取）
+git submodule update --init 3rd/openssl
+
+# 2. 创建构建目录
 mkdir build && cd build
 
-# 2. 配置项目（自动检测并构建 OpenSSL）
+# 3. 配置项目（自动检测并构建 OpenSSL）
 cmake ..
 
-# 3. 编译
+# 4. 编译
 make -j
 
 #### CMake 配置选项：
@@ -87,8 +90,10 @@ sudo make install
 - `-oi, --openssl-include DIR` 引擎编译头文件目录（可重复）
 - `-ol, --openssl-lib-path FILE` 引擎链接使用的 OpenSSL 库路径（如 `libcrypto.a`）
 - `-ai, --app-include DIR` 示例/测试编译头文件目录（可重复）
-- `-al, --app-lib-path FILE` 示例/测试链接使用的 OpenSSL 库路径
-- `--cc CC` 指定编译器；`--cflags '...'` 指定编译参数
+- `-sd, --so-dir DIR` 包含 libcrypto.so 的目录，用于示例/测试链接
+- `--cc CC` 指定编译器
+- `--cflags '...'` 指定编译参数
+- `-d, --debug` 启用调试模式（添加 -g -O0 标志）
 
 构建引擎与示例：
 ```bash
@@ -96,12 +101,28 @@ sudo make install
   -oi ../../openssl-OpenSSL_1_1_1wc/include \
   -ol ../../openssl-OpenSSL_1_1_1wc/libcrypto.a \
   -ai ../../openssl-OpenSSL_1_1_1wc/include \
-  -al ../../openssl-OpenSSL_1_1_1wc/libcrypto.a
+  -sd ../../openssl-OpenSSL_1_1_1wc
 ```
 
 运行示例：
 ```bash
 ./build.sh test
+```
+
+调试模式构建：
+```bash
+./build.sh build -d \
+  -oi ../../openssl-OpenSSL_1_1_1wc/include \
+  -ol ../../openssl-OpenSSL_1_1_1wc/libcrypto.a
+```
+
+自定义编译器和编译参数：
+```bash
+./build.sh build \
+  --cc clang \
+  --cflags "-Wall -Wextra -O3 -fPIC" \
+  -oi ../../openssl-OpenSSL_1_1_1wc/include \
+  -ol ../../openssl-OpenSSL_1_1_1wc/libcrypto.a
 ```
 
 安装引擎（默认安装到 `/usr/local/lib/engines`）：
@@ -202,7 +223,7 @@ cd build
 - 链接报 `unknown option --version-script`：macOS 上请使用 `exported.symbols` 方案（脚本已自动处理）。
 - 运行找不到引擎：检查 `openssl.cnf` 的 `dynamic_path` 是否正确、引擎是否安装到系统默认目录。
 - `NID_sm4_gcm` 未定义：当前示例未启用 GCM，启用前需确保外部 OpenSSL 提供该算法及符号。
-- CMake 找不到 OpenSSL：CMake 会自动从 git submodule 构建 OpenSSL 1.1.1，确保执行了 `git submodule update --init`。
+- CMake 找不到 OpenSSL：CMake 会自动从 git submodule 构建 OpenSSL 1.1.1，确保执行了 `git submodule update --init 3rd/openssl`。
 
 ## 许可证
 
