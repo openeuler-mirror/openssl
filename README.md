@@ -28,7 +28,6 @@
 
 #### 基本构建步骤：
 
-```bash
 # 1. 初始化并拉取 OpenSSL 子模块（如果尚未拉取）
 git submodule update --init 3rd/openssl
 

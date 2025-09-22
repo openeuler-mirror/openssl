@@ -110,6 +110,9 @@ create_build_dir() {
         print_info "Creating build directory..."
         mkdir -p "$BUILD_DIR"
     fi
+    # Create subdirectories for lib and bin
+    mkdir -p "$BUILD_DIR/lib"
+    mkdir -p "$BUILD_DIR/bin"
 }
 
 # Compile source files (engine)
@@ -130,7 +133,7 @@ link_engine() {
     print_info "Linking engine..."
     
     OBJECTS="$BUILD_DIR"/*.o
-    TARGET="$BUILD_DIR/libsm_engine.so"
+    TARGET="$BUILD_DIR/lib/libsm_engine.so"
     CMDLINE="$CC $LDFLAGS_ENGINE -o \"$TARGET\" $OBJECTS"
     # Prefer static lib path if provided, else rely on -l flags
     if [[ -n "$ENGINE_LIB_PATH" ]]; then
@@ -143,7 +146,7 @@ link_engine() {
 
 # Install the engine
 install_engine() {
-    if [ ! -f "$BUILD_DIR/libsm_engine.so" ]; then
+    if [ ! -f "$BUILD_DIR/lib/libsm_engine.so" ]; then
         print_error "Engine not built. Run build first."
         exit 1
     fi
@@ -155,7 +158,7 @@ install_engine() {
         sudo mkdir -p "$INSTALL_DIR"
     fi
     
-    sudo cp "$BUILD_DIR/libsm_engine.so" "$INSTALL_DIR/"
+    sudo cp "$BUILD_DIR/lib/libsm_engine.so" "$INSTALL_DIR/"
     sudo chmod 755 "$INSTALL_DIR/libsm_engine.so"
     print_info "Engine installed successfully"
 }
@@ -182,7 +185,7 @@ clean_build() {
 
 # Test the engine
 test_engine() {
-    if [ ! -f "$BUILD_DIR/libsm_engine.so" ]; then
+    if [ ! -f "$BUILD_DIR/lib/libsm_engine.so" ]; then
         print_error "Engine not built. Run build first."
         exit 1
     fi
@@ -195,11 +198,19 @@ test_engine() {
     fi
     
     # Run example if present
-    if [ -f "$BUILD_DIR/example" ]; then
+    if [ -f "$BUILD_DIR/bin/example" ]; then
         print_info "Running example..."
-        "$BUILD_DIR/example"
+        "$BUILD_DIR/bin/example"
     else
         print_warning "Example executable not found. Run 'build' first to generate it."
+    fi
+
+    # Run quick_test if present
+    if [ -f "$BUILD_DIR/bin/quick_test" ]; then
+        print_info "Running quick_test..."
+        "$BUILD_DIR/bin/quick_test"
+    else
+        print_warning "Quick test executable not found. Run 'build' first to generate it."
     fi
 }
 
@@ -207,13 +218,27 @@ test_engine() {
 build_example() {
     if [ -f "test/example.c" ]; then
         print_info "Building test/example..."
-        local OUT="$BUILD_DIR/example"
-        CMDLINE="$CC $CFLAGS $APP_INCLUDES -o $OUT test/example.c -L$BUILD_DIR -lsm_engine"
+        local OUT="$BUILD_DIR/bin/example"
+        CMDLINE="$CC $CFLAGS $APP_INCLUDES -o $OUT test/example.c -L$BUILD_DIR/lib -lsm_engine"
         if [[ -n "$APP_SO_DIR" ]]; then
             CMDLINE+=" -L$APP_SO_DIR -lcrypto"
         fi
         eval "$CMDLINE"
         print_info "Example built: $OUT"
+    fi
+}
+
+# Build quick_test program (optional)
+build_quick_test() {
+    if [ -f "test/quick_test.c" ]; then
+        print_info "Building test/quick_test..."
+        local OUT="$BUILD_DIR/bin/quick_test"
+        CMDLINE="$CC $CFLAGS $APP_INCLUDES -o $OUT test/quick_test.c -L$BUILD_DIR/lib -lsm_engine"
+        if [[ -n "$APP_SO_DIR" ]]; then
+            CMDLINE+=" -L$APP_SO_DIR -lcrypto"
+        fi
+        eval "$CMDLINE"
+        print_info "Quick test built: $OUT"
     fi
 }
 
@@ -251,6 +276,7 @@ main() {
             compile_sources
             link_engine
             build_example
+            build_quick_test
             ;;
         "install")
             install_engine
@@ -269,6 +295,7 @@ main() {
             compile_sources
             link_engine
             build_example
+            build_quick_test
             install_engine
             test_engine
             ;;
