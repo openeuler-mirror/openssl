@@ -339,7 +339,10 @@ int cms_RecipientInfo_pwri_crypt(CMS_ContentInfo *cms, CMS_RecipientInfo *ri,
     algtmp = pwri->keyDerivationAlgorithm;
 
     /* Finish password based key derivation to setup key in "ctx" */
-
+    if (algtmp == NULL) {
+        CMSerr(ERR_LIB_CMS, CMS_R_INVALID_KEY_ENCRYPTION_PARAMETER);
+        goto err;
+    }
     if (EVP_PBE_CipherInit(algtmp->algorithm,
                            (char *)pwri->pass, pwri->passlen,
                            algtmp->parameter, kekctx, en_de) < 0) {
